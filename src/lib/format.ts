@@ -1,5 +1,8 @@
 const TZ = "Europe/Rome";
 
+/** Istante corrente (ms). Funzione separata per i componenti server. */
+export const nowMs = () => Date.now();
+
 export const euro = (v: number | string | { toString(): string }) =>
   new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(Number(v.toString()));
 

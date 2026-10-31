@@ -56,7 +56,9 @@ Legenda stato: ✅ fatto nello scaffold · 🔜 MVP · 🕒 fase successiva
 ### 4.1 Agenda
 - ✅ Vista giornaliera per operatore, navigazione tra giorni
 - ✅ Visualizzazione del **tempo di posa** e affiancamento degli appuntamenti sovrapposti
-- 🔜 Creazione/modifica appuntamento (cliente, più servizi, operatore, risorsa) con controllo conflitti su operatore **e** risorsa
+- ✅ Creazione appuntamento con orari liberi calcolati (operatore, risorsa, tempi di posa) e conferma WhatsApp automatica
+- ✅ Scheda appuntamento: stati (arrivato, concluso, non presentato, disdetto), messaggi inviati, passaggio in cassa
+- 🔜 Modifica appuntamento, più servizi nello stesso appuntamento
 - 🔜 Drag & drop, ridimensionamento, cambio stato (arrivato, concluso, no-show)
 - 🔜 Vista settimanale, vista per cabina/risorsa
 - 🔜 Orari di apertura, turni e assenze degli operatori
@@ -75,7 +77,9 @@ Legenda stato: ✅ fatto nello scaffold · 🔜 MVP · 🕒 fase successiva
 - 🔜 Gestione listino (CRUD), fasi di posa, abilitazione alla prenotazione online
 
 ### 4.4 Cassa e fisco
-- 🔜 Conto dall'appuntamento, vendita al banco, sconti, pagamenti multipli
+- ✅ Conto dall'appuntamento con prodotti, sconto, metodo di pagamento, scarico magazzino e punti fedeltà
+- ✅ Documento commerciale (simulazione RT) e fattura con XML FatturaPA scaricabile
+- 🔜 Vendita al banco senza appuntamento, pagamenti multipli
 - 🔜 Pacchetti a sedute (vendita e scalo automatico), gift card
 - 🔜 Chiusura cassa giornaliera
 - 🔜 **Integrazione RT** (protocollo XML dei registratori telematici, es. Epson/Custom/RCH) per il documento commerciale
@@ -83,9 +87,10 @@ Legenda stato: ✅ fatto nello scaffold · 🔜 MVP · 🕒 fase successiva
 - 🕒 POS integrato (SumUp, Nexi, Satispay)
 
 ### 4.5 Prenotazione online
-- 🔜 Pagina pubblica `/prenota/[slug]` con scelta servizio → operatore → orario
-- 🔜 Calcolo disponibilità (orari, turni, appuntamenti, risorse, tempi di posa)
-- 🔜 Promemoria e conferma via **WhatsApp Business API** / SMS / email
+- ✅ Pagina pubblica stile app `/prenota/[slug]`: servizio → operatore → giorno/orario → dati → conferma (installabile come PWA)
+- ✅ Link personale per vedere e **disdire** l'appuntamento (entro N ore configurabili)
+- ✅ Calcolo disponibilità (orari, appuntamenti, risorse, tempi di posa)
+- ✅ Conferma e disdetta via WhatsApp (provider simulato) — 🔜 collegamento WhatsApp Business Cloud API, invio programmato dei promemoria
 - 🕒 Caparra o carta a garanzia contro i no-show (Stripe)
 - 🕒 Reserve with Google, link per Instagram/Facebook
 
@@ -97,8 +102,10 @@ Legenda stato: ✅ fatto nello scaffold · 🔜 MVP · 🕒 fase successiva
 - 🕒 Turni, ferie, provvigioni su servizi/prodotti, obiettivi
 
 ### 4.8 Marketing e fidelizzazione
-- 🕒 Fidelity a punti, campagne automatiche (compleanno, richiamo colore, clienti persi)
-- 🕒 Richiesta recensioni Google dopo la visita
+- ✅ Modulo Marketing: messaggi automatici attivabili (conferma, promemoria, disdetta, grazie+recensione, richiamo colore, compleanno, clienti persi)
+- ✅ Campagne WhatsApp a segmenti con anteprima e personalizzazione, storico invii, KPI, QR code del link di prenotazione
+- ✅ Punti fedeltà accumulati in cassa
+- 🔜 Scheduler per gli invii automatici a orario (promemoria 24h, richiami, compleanni)
 
 ### 4.9 Statistiche
 - ✅ Dashboard del giorno (appuntamenti, incasso previsto)
