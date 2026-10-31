@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 110" role="img" aria-label="BluBeauty">
+  <defs>
+    <linearGradient id="c1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B8BFF"/><stop offset="1" stop-color="#0B3B8C"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="98" height="98" rx="26" fill="url(#c1)"/>
+  <text x="50" y="86" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="80" fill="#fff">b</text>
+  <path d="M80 18 Q82 30 94 32 Q82 34 80 46 Q78 34 66 32 Q78 30 80 18Z" fill="#F6C1CF"/>
+  <text x="124" y="72" font-family="Inter, Arial, sans-serif" font-size="54" letter-spacing="-1.5">
+    <tspan font-weight="800" fill="#0B2A5B">blu</tspan><tspan font-weight="500" fill="#2F7BEA">beauty</tspan>
+  </text>
+</svg>
