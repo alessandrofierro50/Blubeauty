@@ -34,42 +34,30 @@ DEMO_PASSWORD = "Demo2026!"
 
 DEMO_TENANTS = [
     {
-        "name": "Moda Bella Boutique",
-        "demo": "abbigliamento",
-        "sector": "Abbigliamento",
+        "name": "Aurora Hair & Beauty",
+        "demo": "salone",
+        "sector": "Parrucchiere ed estetica",
         "vat_number": "01234560011",
-        "city": "Bari", "province": "BA", "address": "Via Sparano 45", "zip_code": "70121",
-        "contact_email": "abbigliamento@demo.blubeauty.it",
-        "admin_name": "Giulia Moretti",
-        "plan": "SALONE", "period": "annuale",
-        # scade tra 25 giorni: mostra il banner "in scadenza"
-        "end_in_days": 25,
-        "warehouses": [("MAG01", "Negozio"), ("MAG02", "Deposito")],
-    },
-    {
-        "name": "Panificio Il Forno Antico",
-        "demo": "panetteria",
-        "sector": "Panetteria",
-        "vat_number": "01234560022",
-        "city": "Altamura", "province": "BA", "address": "Corso Federico II 12", "zip_code": "70022",
-        "contact_email": "panetteria@demo.blubeauty.it",
-        "admin_name": "Michele Lorusso",
-        "plan": "AGENDA", "period": "mensile",
-        "end_in_days": 7,
-        "warehouses": [("MAG01", "Laboratorio e punto vendita")],
-    },
-    {
-        "name": "Ferramenta Rossi",
-        "demo": "ferramenta",
-        "sector": "Ferramenta",
-        "vat_number": "01234560033",
-        "city": "Lecce", "province": "LE", "address": "Viale Leopardi 88", "zip_code": "73100",
-        "contact_email": "ferramenta@demo.blubeauty.it",
-        "admin_name": "Antonio Rossi",
+        "city": "Roma", "province": "RM", "address": "Via Roma 12", "zip_code": "00185",
+        "contact_email": "salone@demo.blubeauty.it",
+        "admin_name": "Alessandra Bianco",
         "plan": "SALONE", "period": "annuale",
         "end_in_days": 240,
-        "warehouses": [("MAG01", "Negozio"), ("MAG02", "Magazzino esterno")],
-        "extra_modules": ["fatturapa", "tentata_vendita"],  # moduli extra a pagamento, attivi per mostrarli nella demo
+        "warehouses": [("MAG01", "Salone")],
+        "extra_modules": ["fatturapa"],  # modulo extra a pagamento, attivo per mostrarlo nella demo
+    },
+    {
+        "name": "Barber Shop Il Baffo",
+        "demo": "barber",
+        "sector": "Barbiere",
+        "vat_number": "01234560022",
+        "city": "Lecce", "province": "LE", "address": "Via Trinchese 20", "zip_code": "73100",
+        "contact_email": "barber@demo.blubeauty.it",
+        "admin_name": "Antonio Greco",
+        "plan": "AGENDA", "period": "mensile",
+        # scade tra 7 giorni: mostra il banner "in scadenza"
+        "end_in_days": 7,
+        "warehouses": [("MAG01", "Negozio")],
     },
 ]
 
@@ -173,12 +161,8 @@ def seed_demo_documents() -> None:
             load_due_demo(db, tid)
             if d["plan"] == "SALONE":
                 load_pos_demo(db, tid, d["demo"])
-            if d["plan"] == "SALONE":
-                from app.bi.demo import load_bi_demo
-                load_bi_demo(db, tid)
-            if "tentata_vendita" in d.get("extra_modules", []):
-                from app.tentata.demo import load_tentata_demo
-                load_tentata_demo(db, tid, DEMO_PASSWORD)
+            from app.agenda.demo import load_agenda_demo
+            load_agenda_demo(db, tid, d["demo"])
             db.commit()
 
 

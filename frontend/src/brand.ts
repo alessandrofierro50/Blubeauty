@@ -1,7 +1,7 @@
 // Identità del prodotto in un unico punto: cambiando questi valori cambia tutta l'interfaccia.
 export const brand = {
   name: 'BluBeauty',
-  tagline: 'Il gestionale semplice per la tua azienda',
+  tagline: 'Il gestionale per parrucchieri, barber e centri estetici',
   logo: '/logo.svg',
   colors: {
     primary: '#2340a8',

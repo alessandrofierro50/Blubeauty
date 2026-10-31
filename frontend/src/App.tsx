@@ -55,11 +55,12 @@ import PosSessions from './pages/pos/Sessions'
 import PosSetup from './pages/pos/Setup'
 import Devices from './pages/periferiche/Devices'
 import { LabelTemplates, PrintLabels } from './pages/periferiche/Labels'
-import AgentApp from './pages/tentata/AgentApp'
-import TripDetail from './pages/tentata/TripDetail'
-import TripPrint from './pages/tentata/TripPrint'
-import Trips from './pages/tentata/Trips'
-import Vans from './pages/tentata/Vans'
+import Agenda from './pages/agenda/Agenda'
+import AgendaSettings from './pages/agenda/AgendaSettings'
+import { ClientDetail, ClientsList } from './pages/agenda/Clients'
+import Services from './pages/agenda/Services'
+import Marketing from './pages/marketing/Marketing'
+import Booking, { MyAppointment } from './pages/prenota/Booking'
 
 function RequireAuth({ scope, children }: { scope: 'admin' | 'user'; children: JSX.Element }) {
   const loc = useLocation()
@@ -93,18 +94,21 @@ export default function App() {
       <Route path="/cassa/:id" element={<RequireAuth scope="user"><Cassa /></RequireAuth>} />
       <Route path="/cassa/:id/display" element={<RequireAuth scope="user"><CustomerDisplay /></RequireAuth>} />
       <Route path="/conta/:id" element={<RequireAuth scope="user"><MobileCount /></RequireAuth>} />
-      <Route path="/giro" element={<RequireAuth scope="user"><AgentApp /></RequireAuth>} />
-      <Route path="/giro/:id" element={<RequireAuth scope="user"><AgentApp /></RequireAuth>} />
-      <Route path="/stampa/giro/:id/:kind" element={<RequireAuth scope="user"><TripPrint /></RequireAuth>} />
+      {/* Prenotazione online pubblica (smartphone dei clienti): nessun login */}
+      <Route path="/prenota/:slug" element={<Booking />} />
+      <Route path="/prenota/:slug/a/:token" element={<MyAppointment />} />
       <Route path="/" element={<RequireAuth scope="user"><AppLayout /></RequireAuth>}>
         <Route index element={<Home />} />
         <Route path="utenti" element={<Users />} />
         <Route path="abbonamento" element={<Subscription />} />
         <Route path="pagamento" element={<Payment />} />
         <Route path="pagamento/esito" element={<PaymentResult />} />
-        <Route path="tentata/giri" element={<Trips />} />
-        <Route path="tentata/giri/:id" element={<TripDetail />} />
-        <Route path="tentata/furgoni" element={<Vans />} />
+        <Route path="agenda" element={<Agenda />} />
+        <Route path="agenda/clienti" element={<ClientsList />} />
+        <Route path="agenda/clienti/:id" element={<ClientDetail />} />
+        <Route path="agenda/servizi" element={<Services />} />
+        <Route path="agenda/impostazioni" element={<AgendaSettings />} />
+        <Route path="marketing" element={<Marketing />} />
         <Route path="articoli" element={<Items />} />
         <Route path="articoli/:id" element={<ItemEditor />} />
         <Route path="clienti" element={<Parties kind="clienti" />} />

@@ -19,6 +19,8 @@ DEPARTMENTS = {
     "abbigliamento": [("ABB", "Abbigliamento", "22", "blue"), ("ACC", "Accessori", "22", "teal"), ("SART", "Sartoria e riparazioni", "22", "grape"), ("VARI", "Varie", "22", "gray")],
     "ferramenta": [("UTE", "Utensili e ferramenta", "22", "blue"), ("MIN", "Minuteria a peso", "22", "orange"), ("CHIAV", "Duplicazione chiavi", "22", "blue"), ("VARI", "Varie", "22", "gray")],
     "panetteria": [("PANE", "Pane", "4", "yellow"), ("DOLCI", "Pasticceria", "10", "pink"), ("VARI", "Varie", "22", "gray")],
+    "salone": [("PROD", "Prodotti", "22", "pink"), ("SERV", "Servizi", "22", "blue"), ("VARI", "Varie", "22", "gray")],
+    "barber": [("PROD", "Prodotti", "22", "pink"), ("SERV", "Servizi", "22", "blue")],
 }
 
 

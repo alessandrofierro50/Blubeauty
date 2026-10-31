@@ -1,5 +1,5 @@
 import { Badge, Button, Group, Paper, SimpleGrid, Text, ThemeIcon, Title } from '@mantine/core'
-import { IconCheck, IconFileInvoice, IconFileText, IconLock, IconTruckDelivery } from '@tabler/icons-react'
+import { IconCalendarEvent, IconCheck, IconFileInvoice, IconFileText, IconLock, IconTruckDelivery } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 
@@ -12,17 +12,41 @@ export default function Home() {
   const nav = useNavigate()
   const has = (code: string) => status.menu.some((m: any) => m.code === code && m.enabled)
   const [k, setK] = useState<any>(null)
+  const [ag, setAg] = useState<any>(null)
   useEffect(() => { if (has('statistiche_base')) appApi('/api/statistiche/riepilogo').then(setK).catch(() => {}) }, [])
+  useEffect(() => { if (has('agenda')) appApi('/api/agenda/riepilogo').then(setAg).catch(() => {}) }, [])
   const hour = new Date().getHours()
   const growth = k && Number(k.previous_year.revenue) ? (Number(k.year.revenue) / Number(k.previous_year.revenue) - 1) * 100 : null
   return (
     <>
       <PageTitle title={`${hour < 13 ? 'Buongiorno' : hour < 18 ? 'Buon pomeriggio' : 'Buonasera'}, ${me.user.full_name.split(' ')[0]}`} subtitle={me.tenant.name}
         right={<Group>
-          {has('vendite') && <Button variant="default" leftSection={<IconFileText size={16} />} onClick={() => nav('/vendite/nuovo?tipo=PRV')}>Preventivo</Button>}
+          {has('agenda') && <Button leftSection={<IconCalendarEvent size={16} />} onClick={() => nav('/agenda')}>Agenda</Button>}
           {has('vendite') && <Button variant="default" leftSection={<IconFileInvoice size={16} />} onClick={() => nav('/vendite/nuovo?tipo=FTI')}>Fattura</Button>}
-          {has('acquisti') && <Button variant="default" leftSection={<IconTruckDelivery size={16} />} onClick={() => nav('/acquisti/nuovo?tipo=DDTF')}>Carico merce</Button>}
+          {has('acquisti') && <Button variant="default" leftSection={<IconTruckDelivery size={16} />} onClick={() => nav('/acquisti/nuovo?tipo=DDTF')}>Carico prodotti</Button>}
         </Group>} />
+      {ag && (
+        <SimpleGrid cols={{ base: 2, md: 4 }} mb="lg">
+          <Paper withBorder p="md" style={{ cursor: 'pointer' }} onClick={() => nav('/agenda')}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Appuntamenti oggi</Text>
+            <Title order={3} mt={6}>{ag.today}</Title>
+            <Text size="sm" c="dimmed">{ag.to_collect} da incassare</Text>
+          </Paper>
+          <Paper withBorder p="md" style={{ cursor: 'pointer' }} onClick={() => nav('/agenda')}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Incasso previsto oggi</Text>
+            <Title order={3} mt={6}>{fmtEuro(ag.expected)}</Title>
+          </Paper>
+          <Paper withBorder p="md" style={{ cursor: 'pointer' }} onClick={() => nav('/marketing')}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Prenotazioni online</Text>
+            <Title order={3} mt={6}>{ag.online_30}</Title>
+            <Text size="sm" c="dimmed">ultimi 30 giorni</Text>
+          </Paper>
+          <Paper withBorder p="md">
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Il tuo link di prenotazione</Text>
+            <Text size="sm" mt={8} style={{ wordBreak: 'break-all' }}><a href={ag.booking_url} target="_blank" rel="noreferrer">{ag.booking_url}</a></Text>
+          </Paper>
+        </SimpleGrid>
+      )}
       {k && (
         <SimpleGrid cols={{ base: 2, md: 4 }} mb="lg">
           <Paper withBorder p="md" style={{ cursor: 'pointer' }} onClick={() => nav('/statistiche')}>

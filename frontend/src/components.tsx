@@ -9,8 +9,8 @@ export function Logo({ size = 32, withName = true }: { size?: number; withName?:
     <Group gap={10} wrap="nowrap">
       <img src={brand.logo} width={size} height={size} alt="" />
       {withName && (
-        <Text fw={800} size={size > 36 ? 'xl' : 'lg'} c={brand.colors.dark} style={{ letterSpacing: -0.3 }}>
-          Blu<span style={{ color: brand.colors.primary }}>Gest</span>
+        <Text fw={800} size={size > 36 ? 'xl' : 'lg'} c={brand.colors.dark} style={{ letterSpacing: -0.3, fontFamily: 'Archivo, sans-serif' }}>
+          Blu<span style={{ color: brand.colors.primary, fontWeight: 400 }}>Beauty</span>
         </Text>
       )}
     </Group>
@@ -38,7 +38,7 @@ export function StatusBadge({ status, label }: { status: string; label: string }
 
 export function PlanBadge({ code }: { code?: string | null }) {
   if (!code) return <Badge variant="outline" color="gray">—</Badge>
-  const color = code === 'PRO' ? 'grape' : code === 'PLUS' ? 'blu' : 'teal'
+  const color = code === 'SALONE' ? 'blu' : code === 'AGENDA' ? 'teal' : 'gray'
   return <Badge color={color}>{code}</Badge>
 }
 

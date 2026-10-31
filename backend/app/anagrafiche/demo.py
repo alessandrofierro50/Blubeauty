@@ -161,6 +161,35 @@ def panetteria(L: Loader) -> None:
            supplier_code="EVO-5L", min_stock=D("20"))
 
 
+def salone(L: Loader) -> None:
+    """Parrucchiere ed estetica: prodotti in vendita al banco e prodotti d'uso interno (prezzi di listino IVA esclusa)."""
+    for c in ("Capelli", "Viso e corpo", "Uso interno"):
+        L.category(c)
+    lab = L.brand("Aurora Lab")
+    cosm = L.party("Cosmetica Sud Srl", supplier=True, vat_number=demo_vat("0123987654"), city="Bari", province="BA",
+                   zip_code="70126", address="Via Amendola 160", payment_term_id=L.pay["BB30"])
+    L.item("Shampoo riparatore 250 ml", price="14.75", cost="5.90", category_id=L.cats["Capelli"], brand_id=lab, supplier=cosm,
+           supplier_code="SH-250", min_stock=D("6"))
+    L.item("Maschera nutriente 200 ml", price="19.67", cost="7.80", category_id=L.cats["Capelli"], brand_id=lab, supplier=cosm,
+           supplier_code="MA-200", min_stock=D("4"))
+    L.item("Olio sublimante 100 ml", price="23.77", cost="9.20", category_id=L.cats["Capelli"], brand_id=lab, supplier=cosm,
+           supplier_code="OL-100", min_stock=D("3"))
+    L.item("Crema viso idratante 50 ml", price="28.69", cost="11.50", category_id=L.cats["Viso e corpo"], supplier=cosm,
+           supplier_code="CV-50", min_stock=D("3"))
+    L.item("Smalto semipermanente", price="9.84", cost="3.90", category_id=L.cats["Viso e corpo"], supplier=cosm, supplier_code="SM-01")
+    L.item("Tinta 6.3 biondo scuro dorato 60 ml", price="0.00", cost="4.80", category_id=L.cats["Uso interno"], supplier=cosm,
+           supplier_code="TN-63", min_stock=D("10"), unit="PZ")
+
+
+def barber(L: Loader) -> None:
+    for c in ("Barba", "Capelli"):
+        L.category(c)
+    L.party("Forniture Barber Srl", supplier=True, vat_number=demo_vat("0234876543"), city="Napoli", province="NA", zip_code="80143",
+            payment_term_id=L.pay["BB30"])
+    L.item("Olio da barba 30 ml", price="12.30", cost="4.50", category_id=L.cats["Barba"])
+    L.item("Cera opaca 100 ml", price="13.93", cost="5.10", category_id=L.cats["Capelli"])
+
+
 def ferramenta(L: Loader) -> None:
     for c in ("Elettroutensili", "Viteria e fissaggio", "Giardinaggio", "Idraulica"):
         L.category(c)
@@ -223,6 +252,8 @@ def extras(db: Session, tenant_id: uuid.UUID, kind: str) -> None:
         "abbigliamento": ("Saldi di fine stagione", ["Felpe", "Accessori"], "sconto", D("30")),
         "panetteria": ("Taralli in offerta", ["Prodotti da forno"], "sconto", D("15")),
         "ferramenta": ("Promo elettroutensili", ["Elettroutensili"], "sconto", D("10")),
+        "salone": ("Prodotti capelli -15%", ["Capelli"], "sconto", D("15")),
+        "barber": ("Promo barba", ["Barba"], "sconto", D("10")),
     }[kind]
     db.add(Promotion(tenant_id=tenant_id, name=promo[0], date_from=today - timedelta(days=3), date_to=today + timedelta(days=20),
                      item_scope="categorie", category_ids=[cats[c] for c in promo[1] if c in cats],
@@ -234,5 +265,6 @@ def extras(db: Session, tenant_id: uuid.UUID, kind: str) -> None:
 
 def load_demo(db: Session, tenant_id: uuid.UUID, kind: str) -> None:
     if not db.scalar(select(Item).where(Item.tenant_id == tenant_id).limit(1)):
-        {"abbigliamento": abbigliamento, "panetteria": panetteria, "ferramenta": ferramenta}[kind](Loader(db, tenant_id))
+        {"abbigliamento": abbigliamento, "panetteria": panetteria, "ferramenta": ferramenta, "salone": salone,
+         "barber": barber}[kind](Loader(db, tenant_id))
     extras(db, tenant_id, kind)

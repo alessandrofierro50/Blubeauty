@@ -1,6 +1,6 @@
 import { Alert, Anchor, AppShell, Badge, Burger, Button, Group, Menu, Modal, NavLink, Text, UnstyledButton } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconCalendarDollar, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook } from '@tabler/icons-react'
+import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarDollar, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -13,14 +13,22 @@ import Subscription from './Subscription'
 const ICONS: Record<string, any> = {
   anagrafiche: IconAddressBook, magazzino: IconBuildingWarehouse, acquisti: IconTruckDelivery, vendite: IconReceipt, scadenzario: IconCalendarDollar,
   fatturapa: IconFileInvoice, statistiche_base: IconChartBar, pos: IconCash, periferiche: IconPrinter,
-  statistiche_avanzate: IconChartDots, tentata_vendita: IconTruck,
+  statistiche_avanzate: IconChartDots, tentata_vendita: IconTruck, agenda: IconCalendarEvent, marketing: IconBrandWhatsapp,
 }
 
 // Sezioni del menu per i moduli già realizzati (gli altri si aggiungono man mano)
 const SECTIONS: Record<string, { label: string; links: [string, string, string?][] }> = {
+  agenda: {
+    label: 'Agenda',
+    links: [['/agenda', 'Agenda del giorno'], ['/agenda/clienti', 'Clienti'], ['/agenda/servizi', 'Servizi e operatori'], ['/agenda/impostazioni', 'Orari e prenotazione online']],
+  },
+  marketing: {
+    label: 'Marketing WhatsApp',
+    links: [['/marketing', 'Messaggi e campagne']],
+  },
   anagrafiche: {
     label: 'Anagrafiche',
-    links: [['/articoli', 'Articoli'], ['/clienti', 'Clienti'], ['/fornitori', 'Fornitori'], ['/promozioni', 'Promozioni'], ['/cataloghi', 'Cataloghi e listini'], ['/tabelle', 'Tabelle']],
+    links: [['/articoli', 'Prodotti'], ['/clienti', 'Anagrafiche clienti'], ['/fornitori', 'Fornitori'], ['/promozioni', 'Promozioni'], ['/tabelle', 'Tabelle']],
   },
   magazzino: {
     label: 'Magazzino',
@@ -29,8 +37,8 @@ const SECTIONS: Record<string, { label: string; links: [string, string, string?]
       ['/magazzino/matricole', 'Matricole'], ['/etichette', 'Stampa etichette', 'periferiche'], ['/magazzino/punti-vendita', 'Punti vendita e magazzini']],
   },
   vendite: {
-    label: 'Vendite',
-    links: [['/vendite', 'Preventivi, ordini, DDT, fatture'], ['/vendite/fatturazione-ddt', 'Fatturazione DDT di fine mese'], ['/vendite/contratti', 'Contratti e canoni'], ['/vendite/storico-articolo', 'Storico articolo'], ['/vendite/acquistato-cliente', 'Acquistato per cliente']],
+    label: 'Fatture',
+    links: [['/vendite', 'Fatture e note di credito'], ['/vendite/acquistato-cliente', 'Acquistato per cliente']],
   },
   statistiche_base: {
     label: 'Statistiche',
@@ -46,8 +54,8 @@ const SECTIONS: Record<string, { label: string; links: [string, string, string?]
     links: [['/scadenzario', 'Scadenze, incassi e pagamenti'], ['/scadenzario/liquidita', 'Liquidità'], ['/scadenzario/solleciti', 'Solleciti']],
   },
   pos: {
-    label: 'Vendita al banco',
-    links: [['/cassa', 'Cassa'], ['/pos/aperture', 'Chiusure di cassa'], ['/pos/casse', 'Casse e reparti'], ['/periferiche', 'Computer e periferiche', 'periferiche'], ['/etichette-modelli', 'Modelli di etichette', 'periferiche']],
+    label: 'Cassa',
+    links: [['/cassa', 'Vendita al banco'], ['/pos/aperture', 'Chiusure di cassa'], ['/pos/casse', 'Casse e reparti'], ['/periferiche', 'Computer e periferiche', 'periferiche'], ['/etichette-modelli', 'Modelli di etichette', 'periferiche']],
   },
   tentata_vendita: {
     label: 'Tentata vendita',
