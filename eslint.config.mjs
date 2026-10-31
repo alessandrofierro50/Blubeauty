@@ -9,6 +9,9 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    // Script Node per il video demo (CommonJS, fuori dall'app)
+    "tools/**",
+    "src/generated/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
