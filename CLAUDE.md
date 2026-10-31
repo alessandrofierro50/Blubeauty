@@ -44,6 +44,15 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   indice unico `messages(tenant_id, dedupe_key)`. Campagne e automatici di marketing SOLO a chi ha il consenso marketing.
 - Migrazione `0024_agenda_marketing` (RLS su tutte le tabelle cliente). Test: `tests/test_agenda.py`.
 
+## Turni e assenze (`/agenda/turni`, `Shifts.tsx`; migrazione `0026_turni`)
+- Orario effettivo di un operatore in un giorno = `service.day_plan`: chiusura del salone (`agenda_absences` senza
+  operatore) > ferie/malattia > «orario diverso» > orario settimanale (personale o del salone, con **settimane alterne**:
+  `agenda_staff.working_hours_b` + `alt_week_a`), meno i **permessi** (ore di assenza). Lo usano disponibilità,
+  prenotazione (anche online), spostamenti e agenda (`GET /api/agenda/orari`, ore non lavorate in grigio).
+- `GET /api/agenda/turni?dal=&giorni=` griglia; `POST/PUT/DELETE /api/agenda/turni/assenze` (solo amministratore, scritte
+  da `service.save_absence`): la risposta elenca gli appuntamenti già presi da spostare (`absence_conflicts`), con
+  «Avvisa» su WhatsApp (wa.me) e «Apri» in agenda. Test: `tests/test_turni.py`.
+
 ## Fidelity, ricevuta non fiscale, modalità semplice
 - Raccolta punti (`app/marketing/loyalty.py`, unico punto che scrive `loyalty_*` e il saldo copiato in
   `agenda_client_profiles.loyalty_points`): saldo = somma di `loyalty_moves`; accrediti con `dedupe_key` (indice unico parziale);

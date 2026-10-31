@@ -1,6 +1,6 @@
 import { Alert, Anchor, AppShell, Badge, Burger, Button, Divider, Group, Menu, Modal, NavLink, Switch, Text, UnstyledButton } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarPlus, IconCalendarDollar, IconSun, IconUserHeart, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook } from '@tabler/icons-react'
+import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarUser, IconCalendarPlus, IconCalendarDollar, IconSun, IconUserHeart, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -20,7 +20,7 @@ const ICONS: Record<string, any> = {
 const SECTIONS: Record<string, { label: string; links: [string, string, string?][] }> = {
   agenda: {
     label: 'Agenda',
-    links: [['/agenda', 'Agenda del giorno'], ['/agenda/clienti', 'Clienti'], ['/agenda/servizi', 'Servizi e operatori'], ['/agenda/impostazioni', 'Orari e prenotazione online']],
+    links: [['/agenda', 'Agenda del giorno'], ['/agenda/clienti', 'Clienti'], ['/agenda/servizi', 'Servizi e operatori'], ['/agenda/turni', 'Turni e assenze'], ['/agenda/impostazioni', 'Impostazioni del salone']],
   },
   marketing: {
     label: 'Marketing WhatsApp',
@@ -168,6 +168,7 @@ export default function AppLayout() {
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Label>{me.user.email}</Menu.Label>
+                {me.user.role === 'amministratore' && status.menu.some((m: any) => m.code === 'agenda' && m.enabled) && <Menu.Item leftSection={<IconBuildingStore size={14} />} onClick={() => nav('/agenda/impostazioni')}>Impostazioni del salone</Menu.Item>}
                 <Menu.Item leftSection={<IconKey size={14} />} onClick={() => setPwOpen(true)}>Cambia password</Menu.Item>
                 <Menu.Item leftSection={<IconLogout size={14} />} onClick={logout}>Esci</Menu.Item>
               </Menu.Dropdown>
@@ -183,8 +184,10 @@ export default function AppLayout() {
               ['/nuovo', 'Nuovo appuntamento', IconCalendarPlus, null],
               ['/agenda', 'Agenda', IconCalendarEvent, null],
               ['/agenda/clienti', 'Clienti', IconUserHeart, null],
+              ['/agenda/turni', 'Turni e assenze', IconCalendarUser, null],
               ['/marketing', 'Messaggi e punti', IconBrandWhatsapp, null],
               ['/cassa', 'Cassa e prodotti', IconCash, 'pos'],
+              ...(me.user.role === 'amministratore' ? [['/agenda/impostazioni', 'Impostazioni del salone', IconBuildingStore, null]] : []),
             ].filter(([, , , mod]) => !mod || status.menu.some((x: any) => x.code === mod && x.enabled)).map(([to, label, Icon]: any) => (
               <NavLink key={to} label={<Text fz={18} fw={600}>{label}</Text>} leftSection={<Icon size={26} />} py={14} style={{ borderRadius: 12 }}
                 active={to === '/' ? loc.pathname === '/' : loc.pathname === to || (to !== '/agenda' && loc.pathname.startsWith(to + '/'))}
@@ -192,7 +195,6 @@ export default function AppLayout() {
             ))}
             <Divider my="md" />
             <Switch size="md" label="Mostra tutte le funzioni" checked={false} onChange={() => setSimple(false)} />
-            {me.user.role === 'amministratore' && <NavLink mt="sm" label="Impostazioni del salone" leftSection={<IconBuildingStore size={20} />} onClick={() => { nav('/agenda/impostazioni'); close() }} />}
           </>
         ) : (<>
         <Switch size="md" mb="sm" label="Modalità semplice" checked={false} onChange={() => setSimple(true)} />

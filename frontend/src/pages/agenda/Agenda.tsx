@@ -51,19 +51,21 @@ export default function Agenda() {
   const nav = useNavigate()
 
   const load = () => appApi(`/api/agenda/appuntamenti?day=${isoDate(day)}`).then(setAppts).catch(notifyError)
+  // orario effettivo del giorno (turni, settimane alterne, ferie, permessi, chiusure)
+  const [plan, setPlan] = useState<Record<string, { hours: string[][]; absence: any }>>({})
   useEffect(() => {
     Promise.all([appApi('/api/agenda/impostazioni'), appApi('/api/agenda/operatori'), appApi('/api/agenda/servizi')])
       .then(([s, st, sv]) => { setSettings(s); setStaff(st.filter((x: Staff) => x.active)); setServices(sv) }).catch(notifyError)
   }, [])
-  useEffect(() => { setAppts(null); load() }, [isoDate(day)])
+  useEffect(() => { setAppts(null); load(); appApi(`/api/agenda/orari?giorno=${isoDate(day)}`).then(setPlan).catch(() => setPlan({})) }, [isoDate(day)])
 
   const hours = settings?.opening_hours?.[dayKey(day)] ?? []
   const [from, to] = useMemo(() => {
-    const all = [...hours, ...staff.flatMap((s) => s.working_hours?.[dayKey(day)] ?? [])]
+    const all = [...hours, ...staff.flatMap((s) => plan[s.id]?.hours ?? s.working_hours?.[dayKey(day)] ?? [])]
     if (!all.length) return [9 * 60, 19 * 60]
     const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
     return [Math.floor(Math.min(...all.map((r: string[]) => toMin(r[0]))) / 60) * 60, Math.ceil(Math.max(...all.map((r: string[]) => toMin(r[1]))) / 60) * 60]
-  }, [settings, staff, isoDate(day)])
+  }, [settings, staff, plan, isoDate(day)])
 
   if (!settings || !appts) return <Loading />
   const shift = (n: number) => { const d = new Date(day); d.setDate(d.getDate() + n); setDay(d) }
@@ -99,6 +101,7 @@ export default function Agenda() {
                   <Group key={s.id} gap={8} px="sm" py="xs" style={{ flex: 1, minWidth: 180, borderLeft: '1px solid var(--mantine-color-gray-2)' }}>
                     <Box w={12} h={12} bg={s.color} style={{ borderRadius: '50%' }} />
                     <Text fw={700}>{s.first_name}</Text>
+                    {plan[s.id]?.absence && <Badge size="sm" variant="light" color={({ ferie: 'teal', malattia: 'red', permesso: 'orange', orario: 'violet', chiusura: 'gray' } as any)[plan[s.id].absence.kind]}>{plan[s.id].absence.kind === 'chiusura' ? 'Salone chiuso' : plan[s.id].absence.label}</Badge>}
                   </Group>
                 ))}
               </Group>
@@ -110,7 +113,7 @@ export default function Agenda() {
                 </Box>
                 {staff.map((s) => {
                   const mine = visible.flatMap((a) => a.items.filter((it) => it.staff_id === s.id).map((it) => ({ a, it })))
-                  const open = s.working_hours?.[dayKey(day)] ?? hours
+                  const open = plan[s.id]?.hours ?? s.working_hours?.[dayKey(day)] ?? hours
                   return (
                     <Box key={s.id} style={{ flex: 1, minWidth: 180, position: 'relative', height: '100%', borderLeft: '1px solid var(--mantine-color-gray-2)', background: open.length ? undefined : 'repeating-linear-gradient(45deg, var(--mantine-color-gray-1) 0 8px, transparent 8px 16px)' }}
                       onClick={(e) => {
@@ -120,6 +123,7 @@ export default function Agenda() {
                         setNewAt({ staffId: s.id, time: `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}` })
                       }}>
                       {Array.from({ length: (to - from) / 60 }, (_, i) => <Box key={i} style={{ position: 'absolute', left: 0, right: 0, top: i * 60 * PX, borderTop: '1px solid var(--mantine-color-gray-2)', pointerEvents: 'none' }} />)}
+                      {open.length > 0 && offRanges(open, from, to).map(([a, b]) => <Box key={a} style={{ position: 'absolute', left: 0, right: 0, top: (a - from) * PX, height: (b - a) * PX, pointerEvents: 'none', background: 'repeating-linear-gradient(45deg, var(--mantine-color-gray-light) 0 8px, transparent 8px 16px)' }} />)}
                       {lanes(mine).map(({ a, it, lane, lanes: n }) => {
                         const top = (minutesOf(it.starts_at) - from) * PX
                         const h = (+new Date(it.ends_at) - +new Date(it.starts_at)) / 60000 * PX
@@ -312,4 +316,15 @@ export function AppointmentDetail({ id, staff, canCash, onChange }: { id: string
       {cashOpen && <PayModal appt={a} onClose={() => setCashOpen(false)} onDone={(x) => { setCashOpen(false); setA(x); onChange() }} />}
     </Stack>
   )
+}
+
+/** Fasce della giornata in cui l'operatore non lavora (pausa, permesso), in minuti dalla mezzanotte. */
+function offRanges(open: string[][], from: number, to: number): [number, number][] {
+  const m = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
+  const sorted = open.map(([a, b]) => [m(a), m(b)]).sort((x, y) => x[0] - y[0])
+  const out: [number, number][] = []
+  let t = from
+  for (const [a, b] of sorted) { if (a > t) out.push([t, a]); t = Math.max(t, b) }
+  if (t < to) out.push([t, to])
+  return out
 }

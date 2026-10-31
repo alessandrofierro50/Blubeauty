@@ -77,6 +77,26 @@ class AgendaStaff(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     # Orari personali (stesso formato di opening_hours); vuoto = orari del salone
     working_hours: Mapped[dict] = mapped_column(JSONType, default=dict)
+    # Settimane alterne: orario della «settimana B» (vuoto = sempre lo stesso orario) e un lunedì di settimana A
+    working_hours_b: Mapped[dict] = mapped_column(JSONType, default=dict)
+    alt_week_a: Mapped[date | None] = mapped_column(Date)
+
+
+class AgendaAbsence(Base):
+    """Eccezione ai turni in un periodo: ferie, malattia, permesso (ore di assenza), orario diverso (ore di lavoro)
+    per un operatore, oppure chiusura del salone (staff_id vuoto). Agenda e prenotazione online ne tengono conto."""
+
+    __tablename__ = "agenda_absences"
+
+    id: Mapped[uuid.UUID] = pk()
+    tenant_id: Mapped[uuid.UUID] = tenant_fk()
+    staff_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agenda_staff.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # ferie | malattia | permesso | orario | chiusura
+    date_from: Mapped[date] = mapped_column(Date, index=True)
+    date_to: Mapped[date] = mapped_column(Date, index=True)
+    hours: Mapped[list] = mapped_column(JSONType, default=list)  # [["09:00","13:00"], ...] per permesso e orario
+    note: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AgendaResource(Base):

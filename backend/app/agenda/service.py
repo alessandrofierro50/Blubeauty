@@ -23,7 +23,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.agenda.models import (AgendaResource, AgendaService, AgendaSettings, AgendaStaff, Appointment, AppointmentItem,
+from app.agenda.models import (AgendaAbsence, AgendaResource, AgendaService, AgendaSettings, AgendaStaff, Appointment, AppointmentItem,
                                BookingPage, ClientProfile)
 from app.anagrafiche.models import Party
 from app.core.config import get_settings
@@ -157,6 +157,114 @@ def _windows(hours: dict, day: date) -> list[tuple[datetime, datetime]]:
     return [(at(day, a), at(day, b)) for a, b in (hours or {}).get(DAY_KEYS[day.weekday()], [])]
 
 
+# ------------------------------------------------------------------------------------------------ turni e assenze
+ABSENCE_KINDS = {"ferie": "Ferie", "malattia": "Malattia", "permesso": "Permesso", "orario": "Orario diverso",
+                 "chiusura": "Salone chiuso"}
+FULL_DAY = ("ferie", "malattia", "chiusura")
+
+
+def _min(t: str) -> int:
+    return int(t[:2]) * 60 + int(t[3:5])
+
+
+def _hhmm(m: int) -> str:
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def subtract_ranges(ranges: list, minus: list) -> list:
+    """Fasce di lavoro meno le fasce di assenza (es. 09-19 meno 12-14 → 09-12, 14-19)."""
+    out = [(_min(a), _min(b)) for a, b in ranges]
+    for ma, mb in ((_min(a), _min(b)) for a, b in minus):
+        nxt = []
+        for a, b in out:
+            if mb <= a or ma >= b:
+                nxt.append((a, b))
+                continue
+            if a < ma:
+                nxt.append((a, ma))
+            if mb < b:
+                nxt.append((mb, b))
+        out = nxt
+    return [[_hhmm(a), _hhmm(b)] for a, b in out if b > a]
+
+
+def weekly_hours(cfg: AgendaSettings, st: AgendaStaff, day: date) -> list:
+    """Orario settimanale dell'operatore (personale o del salone), con le settimane alterne A/B."""
+    base = st.working_hours or cfg.opening_hours
+    if st.working_hours_b and st.alt_week_a:
+        monday_a = st.alt_week_a - timedelta(days=st.alt_week_a.weekday())
+        if ((day - monday_a).days // 7) % 2:
+            base = st.working_hours_b
+    return [list(r) for r in (base or {}).get(DAY_KEYS[day.weekday()], [])]
+
+
+def absences_between(db: Session, d1: date, d2: date) -> list[AgendaAbsence]:
+    return list(db.scalars(select(AgendaAbsence).where(AgendaAbsence.date_from <= d2, AgendaAbsence.date_to >= d1)
+                           .order_by(AgendaAbsence.date_from)))
+
+
+def absence_out(a: AgendaAbsence) -> dict:
+    return {"id": str(a.id), "staff_id": str(a.staff_id) if a.staff_id else None, "kind": a.kind,
+            "label": ABSENCE_KINDS.get(a.kind, a.kind), "date_from": a.date_from.isoformat(), "date_to": a.date_to.isoformat(),
+            "hours": a.hours or [], "note": a.note}
+
+
+def day_plan(cfg: AgendaSettings, st: AgendaStaff, day: date, absences: list[AgendaAbsence]) -> dict:
+    """Orario effettivo di un operatore in un giorno: chiusura del salone > ferie/malattia > orario diverso > settimana,
+    meno i permessi. `absence` = l'eccezione da mostrare in agenda e nei turni."""
+    todays = [a for a in absences if a.date_from <= day <= a.date_to]
+    closed = next((a for a in todays if a.staff_id is None), None)
+    if closed:
+        return {"hours": [], "absence": absence_out(closed)}
+    mine = [a for a in todays if a.staff_id == st.id]
+    full = next((a for a in mine if a.kind in FULL_DAY), None)
+    if full:
+        return {"hours": [], "absence": absence_out(full)}
+    hours = weekly_hours(cfg, st, day)
+    shown = None
+    other = next((a for a in mine if a.kind == "orario"), None)
+    if other:
+        hours, shown = [list(r) for r in other.hours or []], other
+    for a in mine:
+        if a.kind == "permesso":
+            hours = subtract_ranges(hours, a.hours or [])
+            shown = shown or a
+    return {"hours": hours, "absence": absence_out(shown) if shown else None}
+
+
+def staff_windows(cfg: AgendaSettings, st: AgendaStaff, day: date, absences: list[AgendaAbsence]) -> list[tuple[datetime, datetime]]:
+    return [(at(day, a), at(day, b)) for a, b in day_plan(cfg, st, day, absences)["hours"]]
+
+
+def absence_conflicts(db: Session, tenant_id, ab: AgendaAbsence) -> list[dict]:
+    """Appuntamenti già presi che con questa assenza cadono fuori dall'orario: da spostare (anche avvisando la cliente)."""
+    cfg = settings(db, tenant_id)
+    stmt = (select(AppointmentItem, Appointment).join(Appointment, Appointment.id == AppointmentItem.appointment_id)
+            .where(AppointmentItem.starts_at < at(ab.date_to, "00:00") + timedelta(days=1),
+                   AppointmentItem.ends_at > at(ab.date_from, "00:00"),
+                   Appointment.status.in_(("prenotato", "confermato")))
+            .order_by(AppointmentItem.starts_at))
+    if ab.staff_id:
+        stmt = stmt.where(AppointmentItem.staff_id == ab.staff_id)
+    absences = absences_between(db, ab.date_from, ab.date_to)
+    staff = {x.id: x for x in db.scalars(select(AgendaStaff))}
+    out, seen = [], set()
+    for it, appt in db.execute(stmt).all():
+        st = staff.get(it.staff_id)
+        day = local(it.starts_at).date()
+        if st is not None and any(w[0] <= it.starts_at and it.ends_at <= w[1] for w in staff_windows(cfg, st, day, absences)):
+            continue
+        if appt.id in seen:
+            continue
+        seen.add(appt.id)
+        party = db.get(Party, appt.party_id) if appt.party_id else None
+        out.append({"id": str(appt.id), "starts_at": appt.starts_at.isoformat(), "when": f"{fmt_date(appt.starts_at)} ore {fmt_time(appt.starts_at)}",
+                    "client": party.name if party else "", "first_name": (party.first_name or party.name) if party else "",
+                    "phone": msg.normalize_phone(party.mobile or party.phone) if party else None,
+                    "staff": st.first_name if st else "", "service": db.get(AgendaService, it.service_id).name})
+    return out
+
+
 def _busy(db: Session, day_start: datetime, day_end: datetime, exclude_id=None):
     stmt = (select(AppointmentItem, Appointment.status)
             .join(Appointment, Appointment.id == AppointmentItem.appointment_id)
@@ -192,9 +300,10 @@ def _free_resource(service: AgendaService, by_res: dict, seg: tuple) -> uuid.UUI
     return False
 
 
-def _staff_free(db, cfg, st: AgendaStaff, day: date, segs: list, whole: tuple, by_staff: dict) -> bool:
-    hours = st.working_hours or cfg.opening_hours
-    if not any(w[0] <= whole[0] and whole[1] <= w[1] for w in _windows(hours, day)):
+def _staff_free(db, cfg, st: AgendaStaff, day: date, segs: list, whole: tuple, by_staff: dict, absences=None) -> bool:
+    if absences is None:
+        absences = absences_between(db, day, day)
+    if not any(w[0] <= whole[0] and whole[1] <= w[1] for w in staff_windows(cfg, st, day, absences)):
         return False
     return not any(_overlap(b, s) for b in by_staff.get(st.id, []) for s in segs)
 
@@ -216,9 +325,10 @@ def available_slots(db: Session, tenant_id, service: AgendaService, day: date, s
     earliest = now() + timedelta(minutes=cfg.online_lead_minutes if online else 0)
     step = timedelta(minutes=max(5, cfg.slot_minutes or 15))
     shape = Shape(service.duration_min, service.processing_start_min, service.processing_min)
+    absences = absences_between(db, day, day)
     hours_union = []
     for st in staff:
-        hours_union += _windows(st.working_hours or cfg.opening_hours, day)
+        hours_union += staff_windows(cfg, st, day, absences)
     if not hours_union:
         return []
     first, last = min(w[0] for w in hours_union), max(w[1] for w in hours_union)
@@ -227,7 +337,7 @@ def available_slots(db: Session, tenant_id, service: AgendaService, day: date, s
         whole = (t, t + timedelta(minutes=service.duration_min))
         if t >= earliest and _free_resource(service, by_res, whole) is not False:
             segs = staff_segments(t, shape)
-            free = [str(st.id) for st in staff if _staff_free(db, cfg, st, day, segs, whole, by_staff)]
+            free = [str(st.id) for st in staff if _staff_free(db, cfg, st, day, segs, whole, by_staff, absences)]
             if free:
                 out.append({"time": fmt_time(t), "staff_ids": free})
         t += step
@@ -506,3 +616,40 @@ def apply_discount(appt: Appointment, discount: Decimal) -> None:
         cut = left if n == len(appt.items) - 1 else (it.price * discount / total).quantize(Decimal("0.01"))
         it.price -= cut
         left -= cut
+
+
+# ---------------------------------------------------------------------------------------------- scrittura dei turni
+def save_absence(db: Session, tenant_id, *, staff_id, kind: str, date_from: date, date_to: date, hours: list,
+                 note: str | None, absence_id=None) -> AgendaAbsence:
+    """Crea o modifica un'assenza / eccezione di turno. Chiusura del salone = senza operatore."""
+    if kind not in ABSENCE_KINDS:
+        raise fail("Tipo non valido")
+    if (kind == "chiusura") != (staff_id is None):
+        raise fail("La chiusura vale per tutto il salone; ferie, malattia, permessi e orari diversi per un operatore")
+    if date_to < date_from:
+        raise fail("La data di fine è prima di quella di inizio")
+    if (date_to - date_from).days > 366:
+        raise fail("Il periodo può durare al massimo un anno")
+    if kind in ("permesso", "orario") and not hours:
+        raise fail("Indica le ore" + (" di assenza" if kind == "permesso" else " di lavoro"))
+    if staff_id is not None and db.get(AgendaStaff, staff_id) is None:
+        raise fail("Operatore non trovato")
+    ab = db.get(AgendaAbsence, absence_id) if absence_id else None
+    if absence_id and ab is None:
+        raise fail("Assenza non trovata", status.HTTP_404_NOT_FOUND)
+    if ab is None:
+        ab = AgendaAbsence(tenant_id=tenant_id)
+        db.add(ab)
+    ab.staff_id, ab.kind, ab.date_from, ab.date_to = staff_id, kind, date_from, date_to
+    ab.hours = [list(r) for r in hours] if kind in ("permesso", "orario") else []
+    ab.note = (note or "").strip()[:200] or None
+    db.flush()
+    return ab
+
+
+def delete_absence(db: Session, absence_id) -> None:
+    ab = db.get(AgendaAbsence, absence_id)
+    if ab is None:
+        raise fail("Assenza non trovata", status.HTTP_404_NOT_FOUND)
+    db.delete(ab)
+    db.flush()

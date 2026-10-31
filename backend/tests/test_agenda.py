@@ -9,10 +9,6 @@ from sqlalchemy import text
 
 from app.agenda import service as agenda_svc
 
-
-def today() -> date:
-    """Data italiana (il programma ragiona in Europe/Rome; a mezzanotte UTC è già il giorno dopo)."""
-    return datetime.now(agenda_svc.TZ).date()
 from app.marketing import service as msg
 from tests.conftest import activate_and_login, make_tenant
 from tests.test_periferiche import device, done, jobs, pair_agent
@@ -20,6 +16,11 @@ from tests.test_pos import P, setup
 
 AG = "/api/agenda"
 MK = "/api/marketing"
+
+
+def today() -> date:
+    """Data italiana (il programma ragiona in Europe/Rome; a mezzanotte UTC è già il giorno dopo)."""
+    return datetime.now(agenda_svc.TZ).date()
 
 
 def next_weekday(wd: int, min_days: int = 2) -> date:

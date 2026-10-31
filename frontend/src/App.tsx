@@ -59,6 +59,7 @@ import Agenda from './pages/agenda/Agenda'
 import AgendaSettings from './pages/agenda/AgendaSettings'
 import { ClientDetail, ClientsList } from './pages/agenda/Clients'
 import Services from './pages/agenda/Services'
+import Shifts from './pages/agenda/Shifts'
 import Marketing from './pages/marketing/Marketing'
 import Booking, { MyAppointment } from './pages/prenota/Booking'
 import NewBooking from './pages/salone/NewBooking'
@@ -115,6 +116,7 @@ export default function App() {
         <Route path="agenda/clienti" element={<ClientsList />} />
         <Route path="agenda/clienti/:id" element={<ClientDetail />} />
         <Route path="agenda/servizi" element={<Services />} />
+        <Route path="agenda/turni" element={<Shifts />} />
         <Route path="agenda/impostazioni" element={<AgendaSettings />} />
         <Route path="marketing" element={<Marketing />} />
         <Route path="articoli" element={<Items />} />

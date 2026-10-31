@@ -118,13 +118,25 @@ class StaffIn(BaseModel):
     bookable_online: bool = True
     sort_order: int = 0
     working_hours: dict = {}
+    working_hours_b: dict = {}  # settimane alterne: orario della settimana B (vuoto = sempre uguale)
+    alt_week_a: date | None = None  # un giorno di una settimana A
     user_id: uuid.UUID | None = None
 
 
 def staff_out(st: AgendaStaff) -> dict:
     return {"id": str(st.id), "first_name": st.first_name, "last_name": st.last_name, "color": st.color, "active": st.active,
             "bookable_online": st.bookable_online, "sort_order": st.sort_order, "working_hours": st.working_hours or {},
+            "working_hours_b": st.working_hours_b or {}, "alt_week_a": st.alt_week_a.isoformat() if st.alt_week_a else None,
             "user_id": s(st.user_id)}
+
+
+def _staff_data(body: StaffIn) -> dict:
+    data = body.model_dump() | {"working_hours": _hours_ok(body.working_hours), "working_hours_b": _hours_ok(body.working_hours_b)}
+    if data["working_hours_b"] and not data["alt_week_a"]:
+        raise HTTPException(422, "Settimane alterne: indica un giorno della settimana A")
+    if not data["working_hours_b"]:
+        data["alt_week_a"] = None
+    return data
 
 
 @router.get("/operatori")
@@ -134,7 +146,7 @@ def list_staff(ctx: TenantContext = Depends(reader)):
 
 @router.post("/operatori", status_code=201)
 def create_staff(body: StaffIn, ctx: TenantContext = Depends(admin)):
-    st = AgendaStaff(tenant_id=ctx.tenant_id, **(body.model_dump() | {"working_hours": _hours_ok(body.working_hours)}))
+    st = AgendaStaff(tenant_id=ctx.tenant_id, **_staff_data(body))
     ctx.db.add(st)
     ctx.db.flush()
     return staff_out(st)
@@ -143,10 +155,69 @@ def create_staff(body: StaffIn, ctx: TenantContext = Depends(admin)):
 @router.put("/operatori/{staff_id}")
 def update_staff(staff_id: uuid.UUID, body: StaffIn, ctx: TenantContext = Depends(admin)):
     st = _get(ctx, AgendaStaff, staff_id)
-    for k, v in (body.model_dump() | {"working_hours": _hours_ok(body.working_hours)}).items():
+    for k, v in _staff_data(body).items():
         setattr(st, k, v)
     ctx.db.flush()
     return staff_out(st)
+
+
+# ----------------------------------------------------------------------------------------------- turni e assenze
+class AbsenceIn(BaseModel):
+    staff_id: uuid.UUID | None = None  # vuoto = chiusura del salone
+    kind: str = Field(pattern="^(ferie|malattia|permesso|orario|chiusura)$")
+    date_from: date
+    date_to: date
+    hours: list[list[str]] = []
+    note: str | None = Field(None, max_length=200)
+
+
+def _ranges_ok(ranges: list) -> list:
+    return _hours_ok({"mon": ranges}).get("mon", []) if ranges else []
+
+
+@router.get("/turni")
+def shifts(dal: date, giorni: int = Query(14, ge=1, le=62), ctx: TenantContext = Depends(reader)):
+    """Turni effettivi per operatore e giorno (settimana, settimane alterne, ferie, permessi, chiusure) e assenze del periodo."""
+    cfg = svc.settings(ctx.db, ctx.tenant_id)
+    days = [dal + timedelta(days=i) for i in range(giorni)]
+    absences = svc.absences_between(ctx.db, days[0], days[-1])
+    staff = [x for x in ctx.db.scalars(select(AgendaStaff).order_by(AgendaStaff.sort_order, AgendaStaff.first_name)) if x.active]
+    return {
+        "days": [d.isoformat() for d in days],
+        "staff": [staff_out(x) for x in staff],
+        "plan": {str(st.id): {d.isoformat(): svc.day_plan(cfg, st, d, absences) for d in days} for st in staff},
+        "closures": {d.isoformat(): next((svc.absence_out(a) for a in absences if a.staff_id is None and a.date_from <= d <= a.date_to), None)
+                     for d in days},
+        "absences": [svc.absence_out(a) for a in absences],
+        "kinds": svc.ABSENCE_KINDS,
+    }
+
+
+@router.get("/orari")
+def day_hours(giorno: date, ctx: TenantContext = Depends(reader)):
+    """Orario effettivo di ogni operatore in un giorno, per l'agenda."""
+    cfg = svc.settings(ctx.db, ctx.tenant_id)
+    absences = svc.absences_between(ctx.db, giorno, giorno)
+    return {str(st.id): svc.day_plan(cfg, st, giorno, absences) for st in ctx.db.scalars(select(AgendaStaff))}
+
+
+@router.post("/turni/assenze", status_code=201)
+def create_absence(body: AbsenceIn, ctx: TenantContext = Depends(admin)):
+    ab = svc.save_absence(ctx.db, ctx.tenant_id, staff_id=body.staff_id, kind=body.kind, date_from=body.date_from,
+                          date_to=body.date_to, hours=_ranges_ok(body.hours), note=body.note)
+    return {"absence": svc.absence_out(ab), "conflicts": svc.absence_conflicts(ctx.db, ctx.tenant_id, ab)}
+
+
+@router.put("/turni/assenze/{absence_id}")
+def update_absence(absence_id: uuid.UUID, body: AbsenceIn, ctx: TenantContext = Depends(admin)):
+    ab = svc.save_absence(ctx.db, ctx.tenant_id, staff_id=body.staff_id, kind=body.kind, date_from=body.date_from,
+                          date_to=body.date_to, hours=_ranges_ok(body.hours), note=body.note, absence_id=absence_id)
+    return {"absence": svc.absence_out(ab), "conflicts": svc.absence_conflicts(ctx.db, ctx.tenant_id, ab)}
+
+
+@router.delete("/turni/assenze/{absence_id}", status_code=204)
+def remove_absence(absence_id: uuid.UUID, ctx: TenantContext = Depends(admin)):
+    svc.delete_absence(ctx.db, absence_id)
 
 
 class ResourceIn(BaseModel):

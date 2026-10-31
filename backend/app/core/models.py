@@ -285,7 +285,7 @@ TENANT_TABLES += [
     # BluBeauty: agenda e marketing
     "agenda_settings", "agenda_staff", "agenda_resources", "agenda_service_categories", "agenda_services",
     "agenda_service_staff", "agenda_service_resources", "agenda_client_profiles", "agenda_technical_cards",
-    "agenda_appointments", "agenda_appointment_items",
+    "agenda_appointments", "agenda_appointment_items", "agenda_absences",
     "marketing_settings", "messages", "automations", "campaigns",
     "loyalty_settings", "loyalty_rewards", "loyalty_cards", "loyalty_moves",
 ]

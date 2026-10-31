@@ -1,8 +1,9 @@
 import { ActionIcon, Badge, Button, Checkbox, ColorInput, Group, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput, Textarea } from '@mantine/core'
 import { IconEdit, IconPlus } from '@tabler/icons-react'
+import { DateInput } from '@mantine/dates'
 import { useEffect, useState } from 'react'
 
-import { appApi, fmtEuro } from '../../api'
+import { appApi, fmtEuro, isoDate } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { HoursEditor } from './AgendaSettings'
 import type { Service, Staff } from './lib'
@@ -136,8 +137,9 @@ function ServiceModal({ s, staff, resources, cats, vats, onClose, onSaved }: { s
 
 function StaffModal({ s, onClose, onSaved }: { s: Partial<Staff>; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<any>({ last_name: '', sort_order: 0, ...s })
+  const [alt, setAlt] = useState(Object.keys(s.working_hours_b ?? {}).length > 0)
   const save = async () => {
-    const body = { first_name: f.first_name, last_name: f.last_name ?? '', color: f.color, active: f.active, bookable_online: f.bookable_online, sort_order: f.sort_order ?? 0, working_hours: f.working_hours ?? {} }
+    const body = { first_name: f.first_name, last_name: f.last_name ?? '', color: f.color, active: f.active, bookable_online: f.bookable_online, sort_order: f.sort_order ?? 0, working_hours: f.working_hours ?? {}, working_hours_b: alt ? f.working_hours_b ?? {} : {}, alt_week_a: alt ? f.alt_week_a : null }
     try { await appApi(s.id ? `/api/agenda/operatori/${s.id}` : '/api/agenda/operatori', { method: s.id ? 'PUT' : 'POST', body }); notifyOk('Operatore salvato'); onSaved() } catch (e) { notifyError(e) }
   }
   return (
@@ -154,6 +156,18 @@ function StaffModal({ s, onClose, onSaved }: { s: Partial<Staff>; onClose: () =>
           onChange={(e) => setF({ ...f, working_hours: e.target.checked ? { tue: [['09:00', '19:30']], wed: [['09:00', '19:30']], thu: [['09:00', '19:30']], fri: [['09:00', '19:30']], sat: [['08:30', '18:00']] } : {} })} />
         {Object.keys(f.working_hours ?? {}).length > 0 ? <HoursEditor value={f.working_hours} onChange={(h) => setF({ ...f, working_hours: h })} />
           : <Text size="xs" c="dimmed">Senza orari personali valgono gli orari del salone.</Text>}
+        <Checkbox label="Settimane alterne (es. un sabato sì e uno no)" checked={alt}
+          onChange={(e) => { setAlt(e.target.checked); if (e.target.checked && !Object.keys(f.working_hours_b ?? {}).length) setF({ ...f, working_hours_b: { ...(Object.keys(f.working_hours ?? {}).length ? f.working_hours : { tue: [['09:00', '19:30']], wed: [['09:00', '19:30']], thu: [['09:00', '19:30']], fri: [['09:00', '19:30']] }) }, alt_week_a: f.alt_week_a ?? new Date().toISOString().slice(0, 10) }) }} />
+        {alt && (
+          <Paper withBorder p="sm" radius="md">
+            <Text size="sm" fw={600}>Orario della settimana B</Text>
+            <Text size="xs" c="dimmed" mb="xs">Le settimane si alternano: A (l'orario sopra) e B (questo).</Text>
+            <DateInput label="Una data qualsiasi di una settimana A" valueFormat="DD/MM/YYYY" mb="sm" maw={220}
+              value={f.alt_week_a ? new Date(f.alt_week_a + 'T12:00') : null} onChange={(d: any) => d && setF({ ...f, alt_week_a: isoDate(new Date(d)) })} />
+            <HoursEditor value={f.working_hours_b ?? {}} onChange={(h) => setF({ ...f, working_hours_b: h })} />
+          </Paper>
+        )}
+        <Text size="xs" c="dimmed">Ferie, malattia, permessi e cambi di turno di un giorno si segnano in «Turni e assenze».</Text>
         <Button onClick={save} disabled={!f.first_name}>Salva</Button>
       </Stack>
     </Modal>
