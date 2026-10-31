@@ -156,6 +156,20 @@ def load_agenda_demo(db: Session, tenant_id: uuid.UUID, kind: str) -> None:
             for _ in range(rnd.randint(2, 4)):
                 place(rnd.choice(clients), rnd.choice(names[:6]), d, f"{rnd.randint(9, 17):02d}:{rnd.choice(['00', '30'])}",
                       "confermato", rnd.choice(["online", "online", "telefono", "salone"]))
+        # raccolta punti: punti delle visite pagate, tessere alle clienti abituali, un'amica presentata
+        from app.marketing import loyalty
+        loyalty.settings(db, tenant_id)
+        for appt in db.scalars(select(Appointment).where(Appointment.status == "pagato")):
+            party = next((p for p in clients if p.id == appt.party_id), None)
+            if party:
+                tot = sum((i.price for i in appt.items), D(0))
+                m = loyalty.add(db, tenant_id, party, int(tot), "acquisto", dedupe_key=f"acquisto:{appt.id}", appointment_id=appt.id)
+                if m:
+                    m.created_at = appt.starts_at
+        for p in clients[:6]:
+            loyalty.issue_card(db, tenant_id, p, user="Demo")
+        loyalty.add(db, tenant_id, clients[0], 40, "rettifica", note="Punti della vecchia tessera di carta", user="Demo")
+        svc.profile(db, tenant_id, clients[6]).referred_by_party_id = clients[0].id
         # una campagna già inviata
         camp = Campaign(tenant_id=tenant_id, name="Promo autunno colore", segment="tutti", status="bozza",
                         body="Ciao {nome}! 🍂 Questo mese colore + piega a 55 € invece di 65 €. Prenota qui: {link}", created_by="Demo")

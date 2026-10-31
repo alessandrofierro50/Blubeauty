@@ -12,6 +12,13 @@
 
 Prova gratuita dal sito: 7 giorni sul pacchetto Salone.
 
+## Modalità semplice (predefinita)
+Pensata per chi usa poco il computer: menu con sei voci grandi (Oggi, Nuovo appuntamento, Agenda, Clienti, Messaggi e punti,
+Cassa), parole semplici, opzioni avanzate nascoste. La schermata **Oggi** mostra gli appuntamenti del giorno come schede grandi
+con i pulsanti «È arrivata», «Incassa» e «Ricevuta». Il **nuovo appuntamento** è a passi: Per chi? → Cosa? → Con chi? → Quando?
+L'**incasso** è un tocco su Contanti / Carta / Bancomat (la cassa si apre da sola se è chiusa); il premio fedeltà disponibile è
+proposto in evidenza. L'interruttore «Mostra tutte le funzioni» riporta al gestionale completo.
+
 ## Agenda
 - Una colonna per operatore, giorno per giorno; orari del salone e turni personali (più fasce al giorno).
 - **Tempi di posa**: durante la posa del colore l'operatore è libero e può servire un altro cliente; in agenda la posa è a righe e gli appuntamenti sovrapposti si affiancano.
@@ -35,6 +42,20 @@ Prova gratuita dal sito: 7 giorni sul pacchetto Salone.
 - **Scontrino**: documento commerciale emesso dal registratore telematico (Epson o Custom) tramite BluBeauty Agent sul computer della cassa; senza internet la cassa usa l'agent locale.
 - **Fattura**: fattura già incassata; con il modulo extra si invia allo SDI tramite Aruba (XML FatturaPA validato).
 - Aperture e chiusure di cassa, chiusura Z, ricevuta di cortesia sulla stampante termica: come la vendita al banco di BluGest.
+
+## Raccolta punti e tessere fedeltà (pacchetto Salone)
+- Punti per ogni euro pagato (regola modificabile), premi a soglia: sconto in euro, sconto in percentuale, servizio omaggio.
+- Il premio si usa in cassa con un tocco; i punti si scalano e si accumulano sul pagato.
+- Tessera con numero progressivo e codice a barre, stampabile in formato carta di credito; si ritrova col lettore.
+- «Porta un'amica»: chi presenta una nuova cliente riceve punti alla sua prima visita pagata.
+- Punti di benvenuto alla consegna della tessera, correzioni manuali con motivo, storico dei movimenti.
+- Messaggio WhatsApp automatico quando la cliente raggiunge un premio.
+
+## Ricevuta non fiscale
+- Prima dell'incasso vale come promemoria/preconto, dopo come ricevuta: servizi, prodotti, totale, numero dello scontrino
+  fiscale, punti e premio più vicino, tessera (codice a barre), prossimo appuntamento, QR per prenotare dal telefono.
+- Si stampa sulla **stampante termica da 80 mm** (ESC/POS, tramite BluBeauty Agent), sul **registratore telematico come
+  documento non fiscale** (Epson e Custom; da collaudare sugli apparecchi) o dal computer (pagina 80 mm).
 
 ## Marketing WhatsApp
 - Automatici, ognuno con interruttore e testo modificabile: conferma, promemoria (24 ore prima), disdetta, grazie + richiesta di recensione Google, richiamo dopo N giorni dal servizio (es. ritocco colore), auguri di compleanno, clienti persi.

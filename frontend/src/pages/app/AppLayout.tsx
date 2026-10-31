@@ -1,6 +1,6 @@
-import { Alert, Anchor, AppShell, Badge, Burger, Button, Group, Menu, Modal, NavLink, Text, UnstyledButton } from '@mantine/core'
+import { Alert, Anchor, AppShell, Badge, Burger, Button, Divider, Group, Menu, Modal, NavLink, Switch, Text, UnstyledButton } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarDollar, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook } from '@tabler/icons-react'
+import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarPlus, IconCalendarDollar, IconSun, IconUserHeart, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -67,7 +67,10 @@ const SECTIONS: Record<string, { label: string; links: [string, string, string?]
   },
 }
 
-export type AppCtx = { me: any; status: any; reload: () => void }
+export type AppCtx = { me: any; status: any; reload: () => void; simple?: boolean; setSimple?: (v: boolean) => void }
+
+const SIMPLE_KEY = 'blubeauty_semplice'
+const readSimple = () => { try { return localStorage.getItem(SIMPLE_KEY) !== '0' } catch { return true } }
 
 // Voce del menu da evidenziare: quella col percorso più lungo che corrisponde alla pagina.
 function bestLink(links: (string | undefined)[][], path: string) {
@@ -83,6 +86,9 @@ export default function AppLayout() {
   const [status, setStatus] = useState<any>(null)
   const [blocked, setBlocked] = useState<string | null>(null)
   const [pwOpen, setPwOpen] = useState(false)
+  // Modalità semplice (predefinita): poche voci grandi per chi non vuole cercare le funzioni
+  const [simpleMode, setSimpleMode] = useState(readSimple)
+  const setSimple = (v: boolean) => { setSimpleMode(v); try { localStorage.setItem(SIMPLE_KEY, v ? '1' : '0') } catch { /* niente */ } }
 
   const load = async () => {
     try {
@@ -142,8 +148,9 @@ export default function AppLayout() {
   }
 
   const banner = status.banner
+  const simple = simpleMode && status.menu.some((m: any) => m.code === 'agenda' && m.enabled)
   return (
-    <AppShell header={{ height: 60 }} navbar={{ width: 250, breakpoint: 'sm', collapsed: { mobile: !opened } }} padding="lg">
+    <AppShell header={{ height: 60 }} navbar={{ width: simple ? 280 : 250, breakpoint: 'sm', collapsed: { mobile: !opened } }} padding="lg">
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between" wrap="nowrap">
           <Group wrap="nowrap">
@@ -168,6 +175,26 @@ export default function AppLayout() {
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="sm" style={{ overflowY: 'auto' }}>
+        {simple ? (
+          <>
+            {[
+              ['/', 'Oggi', IconSun, null],
+              ['/nuovo', 'Nuovo appuntamento', IconCalendarPlus, null],
+              ['/agenda', 'Agenda', IconCalendarEvent, null],
+              ['/agenda/clienti', 'Clienti', IconUserHeart, null],
+              ['/marketing', 'Messaggi e punti', IconBrandWhatsapp, null],
+              ['/cassa', 'Cassa e prodotti', IconCash, 'pos'],
+            ].filter(([, , , mod]) => !mod || status.menu.some((x: any) => x.code === mod && x.enabled)).map(([to, label, Icon]: any) => (
+              <NavLink key={to} label={<Text fz={18} fw={600}>{label}</Text>} leftSection={<Icon size={26} />} py={14} style={{ borderRadius: 12 }}
+                active={to === '/' ? loc.pathname === '/' : loc.pathname === to || (to !== '/agenda' && loc.pathname.startsWith(to + '/'))}
+                onClick={() => { nav(to); close() }} />
+            ))}
+            <Divider my="md" />
+            <Switch size="md" label="Mostra tutte le funzioni" checked={false} onChange={() => setSimple(false)} />
+            {me.user.role === 'amministratore' && <NavLink mt="sm" label="Impostazioni del salone" leftSection={<IconBuildingStore size={20} />} onClick={() => { nav('/agenda/impostazioni'); close() }} />}
+          </>
+        ) : (<>
+        <Switch size="md" mb="sm" label="Modalità semplice" checked={false} onChange={() => setSimple(true)} />
         <NavLink label="Home" leftSection={<IconHome size={18} />} active={loc.pathname === '/'} onClick={() => { nav('/'); close() }} />
         {/* Menu essenziale: solo i moduli attivi e già disponibili. Gli altri sono elencati nella Home. */}
         {status.menu.filter((m: any) => m.enabled && SECTIONS[m.code]).map((m: any) => {
@@ -192,12 +219,13 @@ export default function AppLayout() {
             <NavLink label="Abbonamento" leftSection={<IconCreditCard size={18} />} active={loc.pathname === '/abbonamento'} onClick={() => { nav('/abbonamento'); close() }} />
           </>
         )}
+        </>)}
       </AppShell.Navbar>
       <AppShell.Main>
         {banner && <Alert color={banner.level === 'error' ? 'red' : banner.level === 'warning' ? 'yellow' : 'blue'} mb="md">
           {banner.text}{me.user.role === 'amministratore' && banner.renew && !loc.pathname.startsWith('/pagamento') && <> <Anchor size="sm" fw={700} onClick={() => nav('/pagamento')}>Rinnova ora</Anchor></>}
           {me.user.role === 'amministratore' && loc.pathname !== '/abbonamento' && <> <Anchor size="sm" onClick={() => nav('/abbonamento')}>Vedi abbonamento</Anchor></>}</Alert>}
-        <Outlet context={{ me, status, reload: load } satisfies AppCtx} />
+        <Outlet context={{ me, status, reload: load, simple, setSimple } satisfies AppCtx} />
       </AppShell.Main>
       <Modal opened={pwOpen} onClose={() => setPwOpen(false)} title="Cambia password">
         <ChangePassword scope="user" onDone={() => setPwOpen(false)} />

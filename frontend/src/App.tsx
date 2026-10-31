@@ -61,6 +61,11 @@ import { ClientDetail, ClientsList } from './pages/agenda/Clients'
 import Services from './pages/agenda/Services'
 import Marketing from './pages/marketing/Marketing'
 import Booking, { MyAppointment } from './pages/prenota/Booking'
+import NewBooking from './pages/salone/NewBooking'
+import { CardPrint, ReceiptPrint } from './pages/salone/Prints'
+import Today from './pages/salone/Today'
+import { useOutletContext } from 'react-router-dom'
+import type { AppCtx } from './pages/app/AppLayout'
 
 function RequireAuth({ scope, children }: { scope: 'admin' | 'user'; children: JSX.Element }) {
   const loc = useLocation()
@@ -96,9 +101,12 @@ export default function App() {
       <Route path="/conta/:id" element={<RequireAuth scope="user"><MobileCount /></RequireAuth>} />
       {/* Prenotazione online pubblica (smartphone dei clienti): nessun login */}
       <Route path="/prenota/:slug" element={<Booking />} />
+      <Route path="/stampa/ricevuta/:id" element={<RequireAuth scope="user"><ReceiptPrint /></RequireAuth>} />
+      <Route path="/stampa/tessera/:id" element={<RequireAuth scope="user"><CardPrint /></RequireAuth>} />
       <Route path="/prenota/:slug/a/:token" element={<MyAppointment />} />
       <Route path="/" element={<RequireAuth scope="user"><AppLayout /></RequireAuth>}>
-        <Route index element={<Home />} />
+        <Route index element={<HomeOrToday />} />
+        <Route path="nuovo" element={<NewBooking />} />
         <Route path="utenti" element={<Users />} />
         <Route path="abbonamento" element={<Subscription />} />
         <Route path="pagamento" element={<Payment />} />
@@ -166,4 +174,11 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
+}
+
+
+/** In modalità semplice la pagina iniziale è «Oggi»; con tutte le funzioni resta la Home del gestionale. */
+function HomeOrToday() {
+  const { simple } = useOutletContext<AppCtx>()
+  return simple ? <Today /> : <Home />
 }

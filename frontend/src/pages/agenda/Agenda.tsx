@@ -9,6 +9,7 @@ import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import type { AppCtx } from '../app/AppLayout'
 import { type Appointment, CHANNEL, type Service, type Staff, STATUS, dayKey, hhmm, longDay, minutesOf } from './lib'
 import { WhatsAppChat } from './WhatsAppChat'
+import { PayModal, ReceiptButtons } from '../salone/Pay'
 
 const PX = 1.5 // pixel per minuto
 
@@ -307,89 +308,8 @@ export function AppointmentDetail({ id, staff, canCash, onChange }: { id: string
       <Text size="sm" fw={600} mt="sm">Messaggi WhatsApp al cliente</Text>
       <WhatsAppChat title="Il salone" messages={a.messages ?? []} height={300} />
       {a.public_url && <Text size="xs" c="dimmed" ta="center">Link personale del cliente: <a href={a.public_url} target="_blank" rel="noreferrer">apri</a></Text>}
-      {cashOpen && <Checkout appt={a} onClose={() => setCashOpen(false)} onDone={(x) => { setCashOpen(false); setA(x); onChange() }} />}
+      {a.status === 'pagato' && <ReceiptButtons apptId={a.id} />}
+      {cashOpen && <PayModal appt={a} onClose={() => setCashOpen(false)} onDone={(x) => { setCashOpen(false); setA(x); onChange() }} />}
     </Stack>
-  )
-}
-
-// ---------------------------------------------------------------------------------------------------------- incasso
-const METHODS = [{ value: 'carta', label: 'Carta' }, { value: 'bancomat', label: 'Bancomat' }, { value: 'contanti', label: 'Contanti' }]
-
-function Checkout({ appt, onClose, onDone }: { appt: Appointment; onClose: () => void; onDone: (a: Appointment) => void }) {
-  const [regs, setRegs] = useState<any[]>([])
-  const [reg, setReg] = useState<string | null>(null)
-  const [catalog, setCatalog] = useState<any[]>([])
-  const [products, setProducts] = useState<{ item_id: string; label: string; quantity: number; price: number }[]>([])
-  const [method, setMethod] = useState('carta')
-  const [discount, setDiscount] = useState<number>(0)
-  const [invoice, setInvoice] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [closed, setClosed] = useState(false)
-  useEffect(() => {
-    Promise.all([appApi('/api/pos/casse'), appApi('/api/agenda/impostazioni')]).then(([r, s]) => {
-      const act = r.filter((x: any) => x.active)
-      setRegs(act)
-      setReg(s.register_id && act.some((x: any) => x.id === s.register_id) ? s.register_id : act[0]?.id ?? null)
-    }).catch(notifyError)
-  }, [])
-  useEffect(() => { if (reg) appApi(`/api/pos/casse/${reg}/catalogo`).then((c) => setCatalog(c.items.filter((i: any) => i.price && i.active))).catch(() => {}) }, [reg])
-  const services = Number(appt.total)
-  const prod = products.reduce((s, p) => s + p.quantity * p.price, 0)
-  const total = Math.max(0, services - Math.min(discount || 0, services) + prod)
-  const session = regs.find((r) => r.id === reg)?.session
-
-  const pay = async () => {
-    setBusy(true)
-    try {
-      const r = await appApi(`/api/agenda/appuntamenti/${appt.id}/incassa`, { body: {
-        register_id: reg, invoice, discount: discount || null, payments: [{ method, amount: total.toFixed(2) }],
-        products: products.map((p) => ({ item_id: p.item_id, quantity: String(p.quantity), unit_price_gross: p.price.toFixed(2) })),
-      } })
-      const doc = r.receipt
-      notifyOk(doc.doc_type === 'FTI' ? `Fattura n. ${doc.number} emessa` : `Scontrino inviato al registratore (${doc.fiscal?.rt?.status ?? 'nessun registratore collegato'})`)
-      onDone(r.appointment)
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409 && /cassa non è aperta|già chiusa/.test(e.message)) setClosed(true)
-      notifyError(e)
-    } finally { setBusy(false) }
-  }
-  const openRegister = async () => {
-    try {
-      await appApi(`/api/pos/casse/${reg}/apri`, { body: { opening_float: '0' } })
-      setRegs(await appApi('/api/pos/casse'))
-      setClosed(false)
-      notifyOk('Cassa aperta')
-    } catch (e) { notifyError(e) }
-  }
-  return (
-    <Modal opened onClose={onClose} title={`Incasso · ${appt.client ?? 'Cliente occasionale'}`} size="lg">
-      <Stack>
-        {regs.length === 0 ? <Text c="orange">Nessuna cassa configurata: vai in Cassa › Casse e reparti.</Text> : (
-          <Select label="Cassa" data={regs.map((r) => ({ value: r.id, label: `${r.name}${r.session ? '' : ' (chiusa)'}` }))} value={reg} onChange={setReg} />
-        )}
-        {(closed || (reg && !session)) && <Button variant="light" onClick={openRegister}>Apri la cassa</Button>}
-        <Stack gap={2}>
-          {appt.items.map((it) => <Group key={it.id} justify="space-between"><Text size="sm">{it.service}</Text><Text size="sm">{fmtEuro(it.price)}</Text></Group>)}
-          {products.map((p, i) => (
-            <Group key={i} justify="space-between">
-              <Text size="sm">{p.quantity} × {p.label}</Text>
-              <Group gap={4}><Text size="sm">{fmtEuro(p.quantity * p.price)}</Text>
-                <ActionIcon size="sm" variant="subtle" color="red" onClick={() => setProducts(products.filter((_, j) => j !== i))}><IconTrash size={14} /></ActionIcon></Group>
-            </Group>
-          ))}
-        </Stack>
-        <Select placeholder="Aggiungi un prodotto venduto" searchable leftSection={<IconPlus size={14} />} value={null}
-          data={catalog.map((c) => ({ value: c.id, label: `${c.description} · ${fmtEuro(c.price)}` }))}
-          onChange={(v) => { const c = catalog.find((x) => x.id === v); if (c) setProducts([...products, { item_id: c.id, label: c.description, quantity: 1, price: Number(c.price) }]) }} />
-        <NumberInput label="Sconto sui servizi (€)" value={discount} onChange={(v) => setDiscount(Number(v) || 0)} min={0} decimalScale={2} decimalSeparator="," />
-        <SegmentedControl value={method} onChange={setMethod} data={METHODS} />
-        <Checkbox label="Il cliente vuole la fattura (servono codice fiscale e indirizzo in anagrafica)" checked={invoice} onChange={(e) => setInvoice(e.target.checked)} disabled={!appt.party_id} />
-        <Group justify="space-between">
-          <Text fz={26} fw={800}>{fmtEuro(total)}</Text>
-          <Button size="md" onClick={pay} loading={busy} disabled={!reg}>{invoice ? 'Incassa ed emetti fattura' : 'Incassa ed emetti scontrino'}</Button>
-        </Group>
-        <Text size="xs" c="dimmed">Lo scontrino è un documento commerciale emesso dal registratore telematico collegato con BluBeauty Agent.</Text>
-      </Stack>
-    </Modal>
   )
 }

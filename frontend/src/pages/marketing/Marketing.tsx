@@ -1,5 +1,5 @@
-import { Alert, Badge, Button, Grid, Group, Modal, NumberInput, Paper, SimpleGrid, Stack, Switch, Table, Text, TextInput, Textarea, Title, UnstyledButton } from '@mantine/core'
-import { IconBrandWhatsapp, IconEdit, IconLock, IconSend } from '@tabler/icons-react'
+import { Alert, Badge, Button, Grid, Group, Modal, NumberInput, Paper, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Textarea, Title, UnstyledButton } from '@mantine/core'
+import { IconBrandWhatsapp, IconEdit, IconGift, IconLock, IconPlus, IconSend } from '@tabler/icons-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
@@ -101,6 +101,7 @@ export default function Marketing() {
         </Grid.Col>
       </Grid>
 
+      {hasMk && <LoyaltySettings />}
       {hasMk ? (
         <Paper withBorder p="md" mb="lg">
           <Grid>
@@ -169,5 +170,58 @@ export default function Marketing() {
         </Stack>
       </Modal>}
     </>
+  )
+}
+
+
+const KIND: Record<string, string> = { sconto_euro: 'Sconto in euro', sconto_percento: 'Sconto in percentuale', servizio: 'Servizio in omaggio' }
+
+/** Regole della raccolta punti e premi (come i programmi fedeltà dei software del settore). */
+function LoyaltySettings() {
+  const [f, setF] = useState<any>(null)
+  const [services, setServices] = useState<any[]>([])
+  const [edit, setEdit] = useState<any>(null)
+  const load = () => appApi('/api/marketing/fidelity').then(setF).catch(notifyError)
+  useEffect(() => { load(); appApi('/api/agenda/servizi').then(setServices).catch(() => {}) }, [])
+  if (!f) return null
+  const save = async (patch: any) => {
+    try { setF(await appApi('/api/marketing/fidelity', { method: 'PUT', body: { enabled: f.enabled, points_per_euro: f.points_per_euro, welcome_points: f.welcome_points, referral_points: f.referral_points, card_prefix: f.card_prefix, ...patch } })) } catch (e) { notifyError(e) }
+  }
+  const saveReward = async () => {
+    const body = { name: edit.name, points: Number(edit.points), kind: edit.kind, value: Number(edit.value || 0), service_id: edit.service_id || null, active: edit.active ?? true }
+    try { await appApi(edit.id ? `/api/marketing/fidelity/premi/${edit.id}` : '/api/marketing/fidelity/premi', { method: edit.id ? 'PUT' : 'POST', body }); setEdit(null); load(); notifyOk('Premio salvato') } catch (e) { notifyError(e) }
+  }
+  return (
+    <Paper withBorder p="md" mb="lg">
+      <Group justify="space-between" mb="sm">
+        <Group gap={8}><IconGift /><Title order={4}>Raccolta punti e tessere fedeltà</Title></Group>
+        <Switch size="md" label={f.enabled ? 'Attiva' : 'Spenta'} checked={f.enabled} onChange={(e) => save({ enabled: e.currentTarget.checked })} />
+      </Group>
+      <SimpleGrid cols={{ base: 1, sm: 3 }} mb="md">
+        <NumberInput label="Punti per ogni euro speso" value={f.points_per_euro} min={0} onChange={(v) => setF({ ...f, points_per_euro: Number(v) })} onBlur={() => save({})} />
+        <NumberInput label="Punti di benvenuto con la tessera" value={f.welcome_points} min={0} onChange={(v) => setF({ ...f, welcome_points: Number(v) })} onBlur={() => save({})} />
+        <NumberInput label="Punti a chi presenta un'amica" value={f.referral_points} min={0} onChange={(v) => setF({ ...f, referral_points: Number(v) })} onBlur={() => save({})} />
+      </SimpleGrid>
+      <Group justify="space-between" mb={6}><Text fw={600}>Premi</Text><Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={() => setEdit({ kind: 'sconto_euro', points: 100, value: 5, name: '' })}>Nuovo premio</Button></Group>
+      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        {f.rewards.map((r: any) => (
+          <Paper key={r.id} withBorder p="sm" style={{ cursor: 'pointer' }} opacity={r.active ? 1 : 0.5} onClick={() => setEdit(r)}>
+            <Text fw={700}>🎁 {r.name}</Text><Text size="sm" c="dimmed">{r.points} punti · {KIND[r.kind]}</Text>
+          </Paper>
+        ))}
+      </SimpleGrid>
+      <Text size="xs" c="dimmed" mt="sm">I punti si accumulano a ogni incasso e il premio si usa in cassa con un tocco. Quando una cliente raggiunge un premio le arriva un messaggio WhatsApp.</Text>
+      {edit && <Modal opened onClose={() => setEdit(null)} title={edit.id ? 'Modifica premio' : 'Nuovo premio'}>
+        <Stack>
+          <TextInput label="Nome del premio" placeholder="Es. Piega in omaggio" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+          <NumberInput label="Punti necessari" value={edit.points} min={1} onChange={(v) => setEdit({ ...edit, points: v })} />
+          <Select label="Tipo" data={Object.entries(KIND).map(([value, label]) => ({ value, label }))} value={edit.kind} onChange={(v) => setEdit({ ...edit, kind: v })} />
+          {edit.kind === 'servizio' ? <Select label="Servizio in omaggio" data={services.map((x) => ({ value: x.id, label: x.name }))} value={edit.service_id} onChange={(v) => setEdit({ ...edit, service_id: v })} />
+            : <NumberInput label={edit.kind === 'sconto_percento' ? 'Percentuale di sconto' : 'Sconto in euro'} value={edit.value} min={0} onChange={(v) => setEdit({ ...edit, value: v })} />}
+          <Switch label="Attivo" checked={edit.active ?? true} onChange={(e) => setEdit({ ...edit, active: e.currentTarget.checked })} />
+          <Button onClick={saveReward} disabled={!edit.name}>Salva</Button>
+        </Stack>
+      </Modal>}
+    </Paper>
   )
 }

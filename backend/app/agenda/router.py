@@ -347,7 +347,8 @@ def client_detail(party_id: uuid.UUID, ctx: TenantContext = Depends(reader)):
         ref = ctx.db.get(Party, prof.referred_by_party_id) if prof and prof.referred_by_party_id else None
         loyalty_out = {"points": pts, "card": c.number if c else None, "next": loyalty.next_reward(ctx.db, ctx.tenant_id, pts),
                        "referred_by": {"id": str(ref.id), "name": ref.name} if ref else None,
-                       "rewards": [{"id": str(r.id), "name": r.name, "points": r.points, "available": r.points <= pts}
+                       "rewards": [{"id": str(r.id), "name": r.name, "points": r.points, "available": r.points <= pts, "kind": r.kind,
+                                     "value": r.value, "service_id": str(r.service_id) if r.service_id else None}
                                    for r in loyalty.rewards(ctx.db, ctx.tenant_id)],
                        "moves": [{"points": m.points, "reason": m.reason, "note": m.note, "created_at": s(m.created_at)} for m in moves]}
     return {**client_row(p, prof), "loyalty": loyalty_out, "cards": [card_out(c) for c in cards],

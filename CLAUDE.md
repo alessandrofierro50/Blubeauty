@@ -44,6 +44,17 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   indice unico `messages(tenant_id, dedupe_key)`. Campagne e automatici di marketing SOLO a chi ha il consenso marketing.
 - Migrazione `0024_agenda_marketing` (RLS su tutte le tabelle cliente). Test: `tests/test_agenda.py`.
 
+## Fidelity, ricevuta non fiscale, modalità semplice
+- Raccolta punti (`app/marketing/loyalty.py`, unico punto che scrive `loyalty_*` e il saldo copiato in
+  `agenda_client_profiles.loyalty_points`): saldo = somma di `loyalty_moves`; accrediti con `dedupe_key` (indice unico parziale);
+  premio riscattato in `agenda.service.checkout` (`reward_id`) come sconto ripartito sui servizi; «porta un'amica» con
+  `agenda_client_profiles.referred_by_party_id`; tessere con contatore bloccato in `loyalty_settings`. Migrazione `0025_fidelity`.
+- Ricevuta NON fiscale: `app/agenda/receipt.py` (formato neutro dell'agent) → `print.text` sulla termica o `rt.nonfiscal` sul
+  registratore (`agent/blubeauty_agent.py`: printerNonFiscal per Epson e Custom; DA COLLAUDARE sugli apparecchi veri).
+- Frontend: modalità semplice predefinita (`localStorage blubeauty_semplice`) in `AppLayout`; pagine `src/pages/salone/`
+  (Oggi, nuovo appuntamento a passi, incasso semplice `Pay.tsx`, stampe 80 mm e tessera `Prints.tsx`).
+- Ricerca sul marketing dei concorrenti: `docs/MARKETING-CONCORRENTI.md`.
+
 ## Periferiche, fattura elettronica, super admin, Console (ereditati da BluGest, identici)
 - BluBeauty Agent: `agent/blubeauty_agent.py` (driver epson_rt, custom_rt, ESC/POS, simulatori); coda `device_jobs`;
   un lavoro "inviato" non si rimanda da solo. DA FARE: prova con registratori veri prima dell'uso in salone.
@@ -78,6 +89,7 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 ## Stato
 - [x] 2026-10-31 — fork di BluGest, pacchetti AGENDA/SALONE, moduli agenda e marketing (migrazione 0024, RLS), prenotazione
       online pubblica, incasso con registratore/fattura, interfaccia, logo e palette BluCode, demo, test (`test_agenda.py`).
+- [x] 2026-10-31 — raccolta punti e tessere, ricevuta non fiscale (termica 80 mm / registratore), modalità semplice.
 - [ ] Prezzi definitivi dei pacchetti (decisione del titolare) e pagina del sito (`content.py`).
 - [ ] WhatsApp Business: numero del salone, modelli approvati da Meta per promemoria/marketing (`docs/WHATSAPP.md`).
 - [ ] Collaudo con registratore telematico vero (Epson/Custom) e stampante termica in un salone pilota.

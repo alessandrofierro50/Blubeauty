@@ -1,6 +1,8 @@
 import { Badge, Button, Checkbox, Grid, Group, Modal, Paper, Select, SimpleGrid, Stack, Table, Text, TextInput, Textarea, Title } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
-import { IconCalendarPlus, IconPlus, IconSearch } from '@tabler/icons-react'
+import { IconCalendarPlus, IconGift, IconPlus, IconPrinter, IconSearch } from '@tabler/icons-react'
+import JsBarcode from 'jsbarcode'
+import { useRef } from 'react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -101,7 +103,7 @@ export function ClientDetail() {
       <PageTitle title={c.name} subtitle={[c.mobile, c.email].filter(Boolean).join(' · ') || 'Nessun contatto'}
         right={<Group>
           <Button variant="default" onClick={() => nav(`/soggetti/${c.id}`)}>Dati di fatturazione</Button>
-          <Button leftSection={<IconCalendarPlus size={16} />} onClick={() => setBook(true)}>Nuovo appuntamento</Button>
+          <Button leftSection={<IconCalendarPlus size={16} />} onClick={() => nav(`/nuovo?cliente=${c.id}`)}>Nuovo appuntamento</Button>
         </Group>} />
       <Grid>
         <Grid.Col span={{ base: 12, md: 8 }}>
@@ -120,6 +122,7 @@ export function ClientDetail() {
                 <Textarea label="Note" defaultValue={c.notes ?? ''} autosize minRows={1} style={{ flex: 1 }} onBlur={(e) => e.target.value !== (c.notes ?? '') && patch({ notes: e.target.value })} />
               </Group>
             </Paper>
+            {c.loyalty && <LoyaltyBox c={c} reload={load} />}
             <Paper withBorder p="md">
               <Group justify="space-between" mb="sm"><Title order={4}>Schede tecniche</Title><Button size="xs" variant="light" onClick={() => setCardOpen(true)}>Aggiungi</Button></Group>
               {c.cards.length === 0 && <Text c="dimmed" size="sm">Nessuna scheda: aggiungi la formula colore o l'anamnesi.</Text>}
@@ -183,5 +186,57 @@ function CardModal({ partyId, onClose, onSaved }: { partyId: string; onClose: ()
         <Button onClick={save}>Salva</Button>
       </Stack>
     </Modal>
+  )
+}
+
+
+const REASON: Record<string, string> = { acquisto: 'Visita', premio: 'Premio usato', benvenuto: 'Benvenuto', presenta_amica: 'Ha presentato un\'amica', rettifica: 'Correzione' }
+
+function CardBarcode({ value }: { value: string }) {
+  const ref = useRef<SVGSVGElement>(null)
+  useEffect(() => { if (ref.current) JsBarcode(ref.current, value, { format: 'CODE128', height: 36, displayValue: true, fontSize: 12, margin: 0 }) }, [value])
+  return <svg ref={ref} />
+}
+
+/** Punti fedeltà, tessera, premi raggiungibili e «presentata da». */
+function LoyaltyBox({ c, reload }: { c: any; reload: () => void }) {
+  const L = c.loyalty
+  const [adjust, setAdjust] = useState(false)
+  const [pts, setPts] = useState<number | string>(10)
+  const [note, setNote] = useState('')
+  const [refOpts, setRefOpts] = useState<any[]>([])
+  const card = async () => { try { await appApi(`/api/marketing/fidelity/clienti/${c.id}/tessera`, { body: {} }); notifyOk('Tessera creata'); reload() } catch (e) { notifyError(e) } }
+  const save = async () => {
+    try { await appApi(`/api/marketing/fidelity/clienti/${c.id}/rettifica`, { body: { points: Number(pts), note } }); setAdjust(false); reload() } catch (e) { notifyError(e) }
+  }
+  return (
+    <Paper withBorder p="md" bg="var(--mantine-color-blu-0)">
+      <Group justify="space-between" align="flex-start">
+        <div>
+          <Group gap={6}><IconGift size={22} /><Title order={4}>Raccolta punti</Title></Group>
+          <Text fz={38} fw={800} c="blu" lh={1.1} data-testid="punti">{L.points} punti</Text>
+          {L.next && <Text>{L.next.reached ? `Può già usare «${L.next.name}»` : `Ancora ${L.next.missing} punti per «${L.next.name}»`}</Text>}
+          {L.referred_by && <Text size="sm" c="dimmed">Presentata da {L.referred_by.name}</Text>}
+        </div>
+        <Stack gap="xs" align="flex-end">
+          {L.card ? <><Paper p="xs" bg="white"><CardBarcode value={L.card} /></Paper>
+            <Button size="xs" variant="light" leftSection={<IconPrinter size={14} />} onClick={() => window.open(`/stampa/tessera/${c.id}`, '_blank')}>Stampa la tessera</Button></>
+            : <Button onClick={card}>Crea la tessera fedeltà</Button>}
+          <Button size="xs" variant="subtle" onClick={() => setAdjust(!adjust)}>Aggiungi o togli punti</Button>
+        </Stack>
+      </Group>
+      {adjust && <Group mt="sm" align="flex-end">
+        <TextInput label="Punti (anche negativi)" w={140} value={String(pts)} onChange={(e) => setPts(e.target.value)} />
+        <TextInput label="Motivo" style={{ flex: 1 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Es. punti della vecchia tessera" />
+        <Button onClick={save} disabled={!note || !Number(pts)}>Salva</Button>
+      </Group>}
+      {!L.referred_by && <Select mt="sm" label="L'ha presentata un'amica? (riceve i punti alla prima visita)" placeholder="Cerca la cliente" searchable clearable
+        data={refOpts} onSearchChange={(q) => q.length > 1 && appApi(`/api/agenda/clienti?limit=10&q=${encodeURIComponent(q)}`).then((r) => setRefOpts(r.filter((x: any) => x.id !== c.id).map((x: any) => ({ value: x.id, label: x.name }))))}
+        onChange={async (v) => { if (v) { await appApi(`/api/agenda/clienti/${c.id}`, { method: 'PATCH', body: { referred_by: v } }).catch(notifyError); reload() } }} />}
+      {L.moves.length > 0 && <Table mt="sm" fz="sm"><Table.Tbody>
+        {L.moves.slice(0, 6).map((m: any, i: number) => <Table.Tr key={i}><Table.Td>{new Date(m.created_at).toLocaleDateString('it-IT')}</Table.Td>
+          <Table.Td>{REASON[m.reason] ?? m.reason}{m.note ? ` · ${m.note}` : ''}</Table.Td><Table.Td ta="right" c={m.points < 0 ? 'red' : 'green'} fw={700}>{m.points > 0 ? '+' : ''}{m.points}</Table.Td></Table.Tr>)}
+      </Table.Tbody></Table>}
+    </Paper>
   )
 }
