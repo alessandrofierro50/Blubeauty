@@ -112,7 +112,7 @@ def download_agent(ctx: TenantContext = Depends(user)):
     """Pacchetto da installare sul computer del negozio: agent, istruzioni e avvio automatico."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for name in ("blubeauty_agent.py", "LEGGIMI.txt", "avvia-agent.bat", "blubeauty-agent.service"):
+        for name in ("blubeauty_agent.py", "rt_errors.py", "LEGGIMI.txt", "avvia-agent.bat", "blubeauty-agent.service"):
             p = agent_dir() / name
             if p.exists():
                 z.write(p, f"BluBeautyAgent/{name}")
