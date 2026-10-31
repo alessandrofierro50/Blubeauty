@@ -114,28 +114,50 @@ def money(v) -> Decimal:
 # Registratori telematici
 
 
-def text_rows(p: dict, width: int) -> list[str]:
-    """Formato neutro di print.text → righe di testo semplice (per i documenti non fiscali del registratore)."""
+def rt_clean(text: str, n: int = 999) -> str:
+    """Testo stampabile dal registratore: niente accenti né simboli fuori dal set di base (€ → EUR), come BluOrderScan."""
+    import unicodedata
+    t = (text or "").replace("€", "EUR")
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode()
+    t = re.sub(r"[^\x20-\x7E]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()[:n].strip()
+
+
+def text_rows(p: dict, width: int, rt: bool = False) -> list[str]:
+    """Formato neutro di print.text → righe di testo semplice per i documenti non fiscali del registratore.
+
+    Con `rt=True` (come BluOrderScan e il gestionale macellerie): solo caratteri di base, niente righe d'intestazione
+    (`rt_skip`, il registratore stampa già la sua), testi alternativi `rt_text`, righe vuote tolte, testi lunghi a capo.
+    """
+    import textwrap
     rows = []
     for ln in p.get("lines", []):
         t = ln.get("type", "text")
-        if t == "cut":
+        if t == "cut" or (rt and ln.get("rt_skip")):
             continue
         if t == "feed":
-            rows += [""] * int(ln.get("lines", 1))
+            if not rt:
+                rows += [""] * int(ln.get("lines", 1))
         elif t == "line":
             rows.append("-" * width)
         elif t in ("barcode", "qr"):
-            rows.append(str(ln.get("label") or ln.get("data", ""))[:width])
+            label = str(ln.get("label") or ln.get("data", ""))
+            if not (rt and t == "qr"):  # un QR non si stampa in testo: sul registratore si salta
+                rows.append(rt_clean(label, width) if rt else label[:width])
         else:
-            text = str(ln.get("text", ""))
-            if ln.get("right"):
-                right = str(ln["right"])
-                text = text[: max(1, width - len(right) - 1)].ljust(width - len(right)) + right
-            align = ln.get("align", "left")
-            text = text[:width]
-            rows.append(text.center(width).rstrip() if align == "center" else text.rjust(width) if align == "right" else text)
-    return rows
+            text = str((ln.get("rt_text") if rt else None) or ln.get("text", ""))
+            right = str(ln["right"]) if ln.get("right") else ""
+            if rt:
+                text, right = rt_clean(text), rt_clean(right, 12)
+            if right:
+                room = width - len(right) - 1
+                rows.append(text[:room].ljust(width - len(right)) + right)
+                continue
+            parts = textwrap.wrap(text, width, break_long_words=True) if rt else [text[:width]]
+            align = "left" if len(parts) > 1 else ln.get("align", "left")  # un testo andato a capo resta a sinistra
+            for part in parts or [""]:
+                rows.append(part.center(width).rstrip() if align == "center" else part.rjust(width) if align == "right" else part)
+    return [r for r in rows if r.strip()] if rt else rows
 
 
 def department_for(line: dict, options: dict) -> int:
@@ -268,8 +290,9 @@ class EpsonRT:
         if kind == "rt.refund":
             return self._info(self.send(self.refund_xml(p)))
         if kind == "rt.nonfiscal":
-            rows = text_rows(p, int(self.options.get("width") or 42))
-            body = "".join(f'<printNormal operator="1" font="1" data={quoteattr(r or " ")} />' for r in rows)
+            # Epson (printerNonFiscal di fpmate): non ancora collaudato su un apparecchio vero, a differenza del Custom
+            rows = text_rows(p, int(self.options.get("width") or 42), rt=True)
+            body = "".join(f'<printNormal operator="1" font="1" data={quoteattr(r)} />' for r in rows)
             self.send(envelope(f'<printerNonFiscal><beginNonFiscal operator="1" />{body}<endNonFiscal operator="1" /></printerNonFiscal>'))
             return {"printed": True, "rows": len(rows)}
         if kind in ("rt.z", "rt.x"):
@@ -379,6 +402,30 @@ class CustomRT:
             raise DeviceError(f"Il registratore ha rifiutato il documento (errore {resp.get('status') or '?'})")
         return resp
 
+    @staticmethod
+    def direct_io(command: str, data: str) -> str:
+        return (f'<?xml version="1.0" encoding="utf-8"?><printerCommand><directIO command="{command}" data={quoteattr(data)}>'
+                '</directIO></printerCommand>')
+
+    def nonfiscal(self, p: dict) -> dict:
+        """Scontrino NON fiscale sul registratore con i comandi Custom 4001 / 4003 / 4004 via directIO, uno per richiesta,
+        come BluOrderScan e il gestionale macellerie (collaudati sul KUBE II). Righe da 32 caratteri (rotolo 57 mm),
+        modificabili con l'opzione `width`. Se un comando viene rifiutato si annulla il documento aperto (resetPrinter)."""
+        width = int(self.options.get("width") or 32)
+        rows = text_rows(p, width, rt=True)
+        try:
+            self.send(self.direct_io("4001", "10"))  # DOC 1 = scontrino non fiscale, COPIA 0
+            for r in rows:
+                self.send(self.direct_io("4003", f"1{len(r):02d}{r}"))
+            self.send(self.direct_io("4004", ""))
+        except DeviceError as e:
+            try:
+                self.send('<?xml version="1.0" encoding="utf-8"?><printerCommand><resetPrinter></resetPrinter></printerCommand>', timeout=15)
+            except Exception:  # noqa: BLE001
+                log("Annullo del documento non fiscale rimasto aperto non riuscito")
+            raise DeviceError(f"Stampa non fiscale rifiutata: {e}") from e
+        return {"printed": True, "rows": len(rows)}
+
     def _info(self, resp) -> dict:
         info = {child_tag(e): (e.text or "").strip() for e in resp.iter()}
         n, z = info.get("fiscalDoc"), info.get("nClose")
@@ -398,11 +445,7 @@ class CustomRT:
             self.send('<?xml version="1.0" encoding="utf-8"?><printerFiscalReport><printXReport></printXReport></printerFiscalReport>')
             return {}
         if kind == "rt.nonfiscal":
-            rows = text_rows(p, int(self.options.get("width") or 42))
-            body = "".join(f'<printNormal font="1" data={quoteattr(r or " ")}></printNormal>' for r in rows)
-            self.send('<?xml version="1.0" encoding="utf-8"?><printerNonFiscal><beginNonFiscal></beginNonFiscal>'
-                      f'{body}<endNonFiscal></endNonFiscal></printerNonFiscal>')
-            return {"printed": True, "rows": len(rows)}
+            return self.nonfiscal(p)
         if kind == "status":
             resp = self.send('<?xml version="1.0" encoding="utf-8"?><printerCommand><queryPrinterStatus></queryPrinterStatus></printerCommand>')
             return {"ok": True, "status": resp.get("status")}
@@ -447,7 +490,7 @@ class SimulatedRT:
         if kind in ("rt.x", "status"):
             return {"ok": True, "simulated": True}
         if kind == "rt.nonfiscal":
-            rows = text_rows(p, 42)
+            rows = text_rows(p, int(self.options.get("width") or 32), rt=True)
             log("[simulatore RT] documento NON fiscale\n" + "\n".join(rows))
             return {"printed": True, "rows": len(rows), "simulated": True}
         raise DeviceError(f"Operazione non prevista: {kind}")

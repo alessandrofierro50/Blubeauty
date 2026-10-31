@@ -50,7 +50,11 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   premio riscattato in `agenda.service.checkout` (`reward_id`) come sconto ripartito sui servizi; «porta un'amica» con
   `agenda_client_profiles.referred_by_party_id`; tessere con contatore bloccato in `loyalty_settings`. Migrazione `0025_fidelity`.
 - Ricevuta NON fiscale: `app/agenda/receipt.py` (formato neutro dell'agent) → `print.text` sulla termica o `rt.nonfiscal` sul
-  registratore (`agent/blubeauty_agent.py`: printerNonFiscal per Epson e Custom; DA COLLAUDARE sugli apparecchi veri).
+  registratore. Custom: **come BluOrderScan e il gestionale macellerie** (repository `Ordini-scan`, `backend/rt_custom.py`
+  `build_nonfiscal` e `ponte/sof_bridge.py`): directIO `4001` dato `10`, una `4003` `1`+lunghezza+testo per riga, `4004`,
+  una richiesta per comando, `resetPrinter` se un comando è rifiutato; righe ASCII da 32 caratteri (rotolo 57 mm, opzione
+  `width`), senza intestazione (`rt_skip`: la stampa il registratore), in fondo «NON VALIDO COME DOC. COMMERCIALE».
+  Epson: printerNonFiscal di fpmate, non ancora collaudato.
 - Frontend: modalità semplice predefinita (`localStorage blubeauty_semplice`) in `AppLayout`; pagine `src/pages/salone/`
   (Oggi, nuovo appuntamento a passi, incasso semplice `Pay.tsx`, stampe 80 mm e tessera `Prints.tsx`).
 - Ricerca sul marketing dei concorrenti: `docs/MARKETING-CONCORRENTI.md`.

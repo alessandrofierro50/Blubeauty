@@ -4,6 +4,7 @@
 """
 
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -169,24 +170,44 @@ def test_esito_al_server(monkeypatch):
 
 
 def test_documento_non_fiscale_su_registratore(tmp_path):
-    """Ricevuta NON fiscale (promemoria, preconto, punti) stampata sul registratore telematico."""
-    ricevuta = {"lines": [{"type": "text", "text": "SALONE AURORA", "align": "center", "bold": True}, {"type": "line"},
-                          {"type": "text", "text": "Colore + piega", "right": "65,00"}, {"type": "feed"},
+    """Ricevuta NON fiscale sul registratore, come BluOrderScan e il gestionale macellerie (Custom 4001/4003/4004)."""
+    ricevuta = {"lines": [{"text": "Salone Aurora", "align": "center", "bold": True, "rt_skip": True},
+                          {"type": "line", "rt_skip": True}, {"text": "RICEVUTA NON FISCALE", "align": "center"},
+                          {"text": "Colore + piega (Giulia)", "right": "65,00"}, {"type": "feed"},
+                          {"text": "Già pagato con carta: 65,00 €"},
                           {"type": "barcode", "data": "BB000123", "label": "Tessera BB000123"},
-                          {"type": "text", "text": "DOCUMENTO NON FISCALE", "align": "center"}, {"type": "cut"}]}
-    sent = {}
+                          {"type": "qr", "data": "https://x.it/prenota/aurora"},
+                          {"text": "DOCUMENTO NON FISCALE", "rt_text": "NON VALIDO COME DOC. COMMERCIALE", "align": "center"},
+                          {"type": "cut"}]}
+    sent = []
 
     def ok(url, data, headers, timeout):
-        sent.update(url=url, data=data.decode())
-        return b'<response success="true" code="" status="2"></response>'
+        sent.append(data.decode())
+        return b'<response success="true" status="0"></response>'
 
-    res = A.EpsonRT("192.168.1.50", {}, http=ok).run("rt.nonfiscal", ricevuta)
-    assert res["printed"] and "<beginNonFiscal" in sent["data"] and "<endNonFiscal" in sent["data"]
-    assert 'data="Colore + piega' in sent["data"] and "65,00" in sent["data"] and "Tessera BB000123" in sent["data"]
-    assert "printRecItem" not in sent["data"]  # niente righe fiscali
     res = A.CustomRT("192.168.1.51", {}, http=ok).run("rt.nonfiscal", ricevuta)
-    assert sent["url"].endswith("/xml/printer.htm") and "<printerNonFiscal>" in sent["data"] and res["rows"] == 6
+    assert 'command="4001" data="10"' in sent[0] and 'command="4004" data=""' in sent[-1]
+    rows = [re.search(r'data="1(\d\d)(.*)"', x).groups() for x in sent[1:-1]]
+    assert all(int(n) == len(t) and len(t) <= 32 for n, t in rows)  # «1» + lunghezza + testo, 32 caratteri
+    texts = [t for _, t in rows]
+    assert "Salone Aurora" not in " ".join(texts)  # l'intestazione la stampa il registratore
+    assert texts[-1].strip() == "NON VALIDO COME DOC. COMMERCIALE" and "Gia pagato con carta: 65,00 EUR" in texts
+    assert any(t.startswith("Colore + piega (Giulia)") and t.endswith("65,00") for t in texts)
+    assert "Tessera BB000123" in texts and not any("https" in t for t in texts) and res["rows"] == len(texts)
+    # comando rifiutato: si annulla il documento aperto e si segnala l'errore
+    calls = []
+
+    def ko(url, data, headers, timeout):
+        calls.append(data.decode())
+        if "4003" in calls[-1]:
+            return b'<response success="false" status="18"></response>'
+        return b'<response success="true" status="0"></response>'
+
+    with pytest.raises(A.DeviceError, match="Stampa non fiscale rifiutata"):
+        A.CustomRT("192.168.1.51", {}, http=ko).run("rt.nonfiscal", ricevuta)
+    assert "resetPrinter" in calls[-1]
+    # Epson e simulatore usano le stesse righe
+    res = A.EpsonRT("192.168.1.50", {}, http=ok).run("rt.nonfiscal", ricevuta)
+    assert "<beginNonFiscal" in sent[-1] and "65,00" in sent[-1]
     sim = A.SimulatedRT("", {}, state_file=tmp_path / "rt.json").run("rt.nonfiscal", ricevuta)
-    assert sim["simulated"] and sim["rows"] == 6
-    rows = A.text_rows(ricevuta, 30)
-    assert rows[0].strip() == "SALONE AURORA" and rows[2].endswith("65,00") and len(rows[2]) == 30
+    assert sim["simulated"] and sim["rows"] == len(texts)

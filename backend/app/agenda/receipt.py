@@ -25,15 +25,16 @@ def build(db: Session, tenant_id, appt: Appointment, with_marketing: bool = True
     party = db.get(Party, appt.party_id) if appt.party_id else None
     staff = {s.id: s.first_name for s in db.scalars(select(AgendaStaff))}
     paid = appt.status == "pagato"
-    L: list[dict] = [{"text": svc.salon_name(db, tenant_id), "align": "center", "bold": True, "size": 2}]
+    # intestazione: sul registratore si salta (rt_skip), perché stampa già la sua intestazione fiscale
+    L: list[dict] = [{"text": svc.salon_name(db, tenant_id), "align": "center", "bold": True, "size": 2, "rt_skip": True}]
     if co:
         addr = " ".join(x for x in [co.address, co.zip_code, co.city] if x)
         if addr:
-            L.append({"text": addr, "align": "center"})
+            L.append({"text": addr, "align": "center", "rt_skip": True})
         if co.phone:
-            L.append({"text": f"Tel. {co.phone}", "align": "center"})
+            L.append({"text": f"Tel. {co.phone}", "align": "center", "rt_skip": True})
     title = "RICEVUTA NON FISCALE" if paid else "PROMEMORIA APPUNTAMENTO"
-    L += [{"type": "line"}, {"text": title, "align": "center", "bold": True}, {"type": "line"}]
+    L += [{"type": "line", "rt_skip": True}, {"text": title, "align": "center", "bold": True}, {"type": "line"}]
     if party:
         L.append({"text": f"Cliente: {party.name}"})
     L.append({"text": f"{svc.fmt_date(appt.starts_at).capitalize()} ore {svc.fmt_time(appt.starts_at)}"})
@@ -77,8 +78,11 @@ def build(db: Session, tenant_id, appt: Appointment, with_marketing: bool = True
         if nxt_appt:
             L += [{"type": "feed"}, {"text": "Prossimo appuntamento:", "bold": True},
                   {"text": f"{svc.fmt_date(nxt_appt.starts_at).capitalize()} ore {svc.fmt_time(nxt_appt.starts_at)}"}]
-    L += [{"type": "feed"}, {"text": "Prenota dal telefono:", "align": "center"},
+    L += [{"type": "feed"}, {"text": "Prenota dal telefono:", "align": "center",
+                                    "rt_text": "Prenota online: " + svc.public_link(db, tenant_id).split("://", 1)[-1]},
           {"type": "qr", "data": svc.public_link(db, tenant_id), "label": svc.public_link(db, tenant_id), "align": "center"},
-          {"type": "line"}, {"text": "DOCUMENTO NON FISCALE", "align": "center"},
+          {"type": "line"},
+          # dicitura come BluOrderScan e il gestionale macellerie (sul registratore, 32 caratteri)
+          {"text": "DOCUMENTO NON FISCALE", "rt_text": "NON VALIDO COME DOC. COMMERCIALE", "align": "center"},
           {"text": datetime.now(svc.TZ).strftime("%d/%m/%Y %H:%M"), "align": "center"}, {"type": "cut"}]
     return {"lines": L}

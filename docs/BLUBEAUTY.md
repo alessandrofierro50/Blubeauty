@@ -55,7 +55,9 @@ proposto in evidenza. L'interruttore «Mostra tutte le funzioni» riporta al ges
 - Prima dell'incasso vale come promemoria/preconto, dopo come ricevuta: servizi, prodotti, totale, numero dello scontrino
   fiscale, punti e premio più vicino, tessera (codice a barre), prossimo appuntamento, QR per prenotare dal telefono.
 - Si stampa sulla **stampante termica da 80 mm** (ESC/POS, tramite BluBeauty Agent), sul **registratore telematico come
-  documento non fiscale** (Epson e Custom; da collaudare sugli apparecchi) o dal computer (pagina 80 mm).
+  documento non fiscale** o dal computer (pagina 80 mm). Sul registratore Custom si usa lo stesso metodo di BluOrderScan e del
+  gestionale macellerie (comandi 4001/4003/4004, già usati sul KUBE II): testo semplice da 32 caratteri, intestazione stampata
+  dal registratore, dicitura «NON VALIDO COME DOC. COMMERCIALE». Su Epson il documento non fiscale è da collaudare.
 
 ## Marketing WhatsApp
 - Automatici, ognuno con interruttore e testo modificabile: conferma, promemoria (24 ore prima), disdetta, grazie + richiesta di recensione Google, richiamo dopo N giorni dal servizio (es. ritocco colore), auguri di compleanno, clienti persi.
