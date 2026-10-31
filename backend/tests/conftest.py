@@ -10,6 +10,7 @@ os.environ["TERMS_PDF_URL"] = ""  # niente download nei test: chi lo prova simul
 os.environ["ADMIN_NOTIFY_EMAIL"] = "titolare@blubeauty.test"
 os.environ["SUPERADMIN_EMAIL"] = "admin@blubeauty.test"
 os.environ["SUPERADMIN_PASSWORD"] = "password-admin"
+os.environ["TRIAL_PLAN"] = "PRO"  # i test ereditati da BluGest usano i suoi pacchetti (vedi LEGACY_PLANS)
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -23,6 +24,25 @@ from app.core.mailer import OUTBOX  # noqa: E402
 from app.seed import seed_base  # noqa: E402
 
 HERE = os.path.dirname(os.path.dirname(__file__))
+
+
+# Pacchetti di BluGest usati SOLO dai test ereditati dal motore comune (abbonamenti, limiti, moduli, pagamenti…):
+# così quei test restano identici a BluGest. I pacchetti veri di BluBeauty (AGENDA, SALONE) hanno test propri.
+LEGACY_PLANS = [
+    ("BASE", "Base", "29.00", "290.00", 3, 1, 1, 0, ["anagrafiche", "magazzino", "acquisti", "vendite", "scadenzario", "statistiche_base"]),
+    ("PLUS", "Plus", "49.00", "490.00", 5, 1, 2, 2, ["anagrafiche", "magazzino", "acquisti", "vendite", "scadenzario", "statistiche_base",
+                                                     "pos", "periferiche"]),
+    ("PRO", "Pro", "79.00", "790.00", 10, 3, 5, 5, ["anagrafiche", "magazzino", "acquisti", "vendite", "scadenzario", "statistiche_base",
+                                                    "pos", "periferiche", "statistiche_avanzate"]),
+]
+
+
+def add_legacy_plans(db):
+    from decimal import Decimal
+    from app.core.models import Plan
+    for n, (code, name, pm, py, users, comps, whs, pos, mods) in enumerate(LEGACY_PLANS, start=10):
+        db.add(Plan(code=code, name=f"BluBeauty {name}", price_month=Decimal(pm), price_year=Decimal(py), max_users=users,
+                    max_companies=comps, max_warehouses=whs, max_pos=pos, sort_order=n, modules=mods))
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -45,6 +65,7 @@ def clean(database):
                        "super_admins, payment_events, invoice_counters RESTART IDENTITY CASCADE"))
     with Session(owner) as db:
         seed_base(db)
+        add_legacy_plans(db)
         db.commit()
     owner.dispose()
     OUTBOX.clear()

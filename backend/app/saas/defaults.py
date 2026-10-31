@@ -7,10 +7,10 @@ from app.saas.logic import PLAN_MODULES
 # Prezzi PROVVISORI, da modificare dal pannello super amministratore.
 DEFAULT_PLANS = [
     {
-        "code": "BASE",
-        "name": "BluBeauty Base",
-        "price_month": Decimal("29.00"),
-        "price_year": Decimal("290.00"),
+        "code": "AGENDA",
+        "name": "BluBeauty Agenda",
+        "price_month": Decimal("19.00"),
+        "price_year": Decimal("190.00"),
         "max_users": 3,
         "max_companies": 1,
         "max_warehouses": 1,
@@ -18,26 +18,15 @@ DEFAULT_PLANS = [
         "sort_order": 1,
     },
     {
-        "code": "PLUS",
-        "name": "BluBeauty Plus",
-        "price_month": Decimal("49.00"),
-        "price_year": Decimal("490.00"),
-        "max_users": 5,
+        "code": "SALONE",
+        "name": "BluBeauty Salone",
+        "price_month": Decimal("39.00"),
+        "price_year": Decimal("390.00"),
+        "max_users": 8,
         "max_companies": 1,
         "max_warehouses": 2,
         "max_pos": 2,
         "sort_order": 2,
-    },
-    {
-        "code": "PRO",
-        "name": "BluBeauty Pro",
-        "price_month": Decimal("79.00"),
-        "price_year": Decimal("790.00"),
-        "max_users": 10,
-        "max_companies": 3,
-        "max_warehouses": 5,
-        "max_pos": 5,
-        "sort_order": 3,
     },
 ]
 for p in DEFAULT_PLANS:

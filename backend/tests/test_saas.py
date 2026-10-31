@@ -88,8 +88,13 @@ def test_cambio_pacchetto_attiva_moduli(client, admin_headers):
 def test_modulo_extra_singolo_cliente(client, admin_headers):
     t = make_tenant(client, admin_headers, "Extra Srl", plan="BASE")
     h = activate_and_login(client, t)
-    client.patch(f"/api/admin/tenants/{t['id']}", json={"extra_modules": ["statistiche_avanzate"]}, headers=admin_headers)
-    assert client.get("/api/app/modules/statistiche_avanzate/check", headers=h).status_code == 200
+    assert client.get("/api/app/modules/fatturapa/check", headers=h).status_code == 403
+    r = client.patch(f"/api/admin/tenants/{t['id']}", json={"extra_modules": ["fatturapa"]}, headers=admin_headers)
+    assert r.status_code == 200, r.text
+    assert client.get("/api/app/modules/fatturapa/check", headers=h).status_code == 200
+    # BluBeauty vende come extra solo la fatturazione elettronica
+    r = client.patch(f"/api/admin/tenants/{t['id']}", json={"extra_modules": ["statistiche_avanzate"]}, headers=admin_headers)
+    assert r.status_code == 400
 
 
 def _set_end(owner_db, tenant_id, end):

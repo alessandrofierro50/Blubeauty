@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     superadmin_password: str = "cambiami"
 
     # Prova gratuita dal sito (pagina /prova): pacchetto e durata; vuoto TRIAL_PLAN = iscrizione disattivata
-    trial_plan: str = "PRO"
+    trial_plan: str = "SALONE"
     trial_days: int = 7  # come promesso sul sito (content.py PROVA_GIORNI)
     trial_extra_modules: str = ""  # es. "fatturapa,tentata_vendita"
     website_url: str = "https://blucodeinformatica.it"

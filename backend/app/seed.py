@@ -41,7 +41,7 @@ DEMO_TENANTS = [
         "city": "Bari", "province": "BA", "address": "Via Sparano 45", "zip_code": "70121",
         "contact_email": "abbigliamento@demo.blubeauty.it",
         "admin_name": "Giulia Moretti",
-        "plan": "PLUS", "period": "annuale",
+        "plan": "SALONE", "period": "annuale",
         # scade tra 25 giorni: mostra il banner "in scadenza"
         "end_in_days": 25,
         "warehouses": [("MAG01", "Negozio"), ("MAG02", "Deposito")],
@@ -54,7 +54,7 @@ DEMO_TENANTS = [
         "city": "Altamura", "province": "BA", "address": "Corso Federico II 12", "zip_code": "70022",
         "contact_email": "panetteria@demo.blubeauty.it",
         "admin_name": "Michele Lorusso",
-        "plan": "BASE", "period": "mensile",
+        "plan": "AGENDA", "period": "mensile",
         "end_in_days": 7,
         "warehouses": [("MAG01", "Laboratorio e punto vendita")],
     },
@@ -66,7 +66,7 @@ DEMO_TENANTS = [
         "city": "Lecce", "province": "LE", "address": "Viale Leopardi 88", "zip_code": "73100",
         "contact_email": "ferramenta@demo.blubeauty.it",
         "admin_name": "Antonio Rossi",
-        "plan": "PRO", "period": "annuale",
+        "plan": "SALONE", "period": "annuale",
         "end_in_days": 240,
         "warehouses": [("MAG01", "Negozio"), ("MAG02", "Magazzino esterno")],
         "extra_modules": ["fatturapa", "tentata_vendita"],  # moduli extra a pagamento, attivi per mostrarli nella demo
@@ -171,9 +171,9 @@ def seed_demo_documents() -> None:
             load_purchases_demo(db, tid)
             load_sales_demo(db, tid)
             load_due_demo(db, tid)
-            if d["plan"] in ("PLUS", "PRO"):
+            if d["plan"] == "SALONE":
                 load_pos_demo(db, tid, d["demo"])
-            if d["plan"] == "PRO":
+            if d["plan"] == "SALONE":
                 from app.bi.demo import load_bi_demo
                 load_bi_demo(db, tid)
             if "tentata_vendita" in d.get("extra_modules", []):

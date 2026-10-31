@@ -334,7 +334,7 @@ class TenantCreate(BaseModel):
     phone: str | None = None
     notes: str | None = None
     # primo abbonamento
-    plan_code: str = "BASE"
+    plan_code: str = "SALONE"
     start_date: date | None = None
     end_date: date | None = None
     period: str = "annuale"
@@ -472,7 +472,7 @@ def update_tenant(tenant_id: uuid.UUID, body: TenantUpdate, admin: SuperAdmin = 
     for k, v in data.items():
         setattr(t, k, v.lower() if k == "contact_email" and v else v)
     if extra is not None:
-        unknown = set(extra) - set(logic.MODULES)
+        unknown = set(extra) - set(logic.EXTRA_MODULES)
         if unknown:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Moduli sconosciuti: {', '.join(unknown)}")
         before["extra_modules"] = [m.module for m in t.extra_modules]
@@ -728,7 +728,7 @@ def list_plans(admin: SuperAdmin = Depends(get_admin), db: Session = Depends(get
 
 @router.get("/modules")
 def list_modules(admin: SuperAdmin = Depends(get_admin)):
-    return [{"code": k, "label": v} for k, v in logic.MODULES.items()]
+    return [{"code": k, "label": v} for k, v in logic.MODULES.items() if k in logic.CATALOG_MODULES]
 
 
 class PlanUpdate(BaseModel):
@@ -746,7 +746,7 @@ class PlanUpdate(BaseModel):
 def update_plan(code: str, body: PlanUpdate, admin: SuperAdmin = Depends(get_admin), db: Session = Depends(get_db)):
     plan = _plan(db, code)
     data = body.model_dump(exclude_unset=True)
-    if "modules" in data and set(data["modules"]) - set(logic.MODULES):
+    if "modules" in data and set(data["modules"]) - set(logic.CATALOG_MODULES):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Moduli sconosciuti")
     for k, v in data.items():
         setattr(plan, k, v)

@@ -51,7 +51,12 @@ def test_regola_avviso_con_recupero():
 
 
 def test_moduli_per_pacchetto():
-    assert "pos" not in logic.tenant_modules("BASE", None, [])
-    assert "pos" in logic.tenant_modules("BASE", None, ["pos"])          # modulo extra
-    assert "statistiche_avanzate" in logic.tenant_modules("PRO", None, [])
+    # pacchetti BluBeauty: AGENDA (agenda e clienti) e SALONE (+ cassa, registratore, magazzino, marketing…)
+    agenda = logic.tenant_modules("AGENDA", None, [])
+    assert "agenda" in agenda and "anagrafiche" in agenda and "pos" not in agenda and "marketing" not in agenda
+    salone = logic.tenant_modules("SALONE", None, [])
+    assert {"agenda", "pos", "periferiche", "marketing", "magazzino", "vendite"} <= set(salone)
+    assert "fatturapa" not in salone and "fatturapa" in logic.tenant_modules("SALONE", None, ["fatturapa"])  # modulo extra
+    assert logic.EXTRA_MODULES == ["fatturapa"]
+    assert "tentata_vendita" not in logic.CATALOG_MODULES and "statistiche_avanzate" not in logic.CATALOG_MODULES
     assert logic.render_placeholders("Ciao {nome}", {"nome": "Anna"}) == "Ciao Anna"

@@ -16,8 +16,6 @@ from app.pos.router import router as pos_router
 from app.periferiche.router import router as periferiche_router
 from app.periferiche.agent_router import router as agent_router
 from app.bi.router import router as bi_router
-from app.tentata.router import public as tentata_public
-from app.tentata.router import router as tentata_router
 from app.pagamenti.router import admin_router as pagamenti_admin_router
 from app.pagamenti.router import app_router as pagamenti_app_router
 from app.pagamenti.router import public as pagamenti_public
@@ -58,8 +56,6 @@ app.include_router(bi_router)
 app.include_router(pos_router)
 app.include_router(periferiche_router)
 app.include_router(agent_router)
-app.include_router(tentata_router)
-app.include_router(tentata_public)
 app.include_router(pagamenti_app_router)
 app.include_router(pagamenti_public)
 app.include_router(pagamenti_admin_router)

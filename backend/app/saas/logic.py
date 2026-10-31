@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 
 # Moduli del gestionale e pacchetto minimo che li include.
 MODULES: dict[str, str] = {
+    "agenda": "Agenda, prenotazioni online da smartphone e schede clienti",
     "anagrafiche": "Anagrafiche clienti, fornitori e articoli",
     "magazzino": "Magazzino, lotti e matricole",
     "acquisti": "Acquisti e carico merce",
@@ -24,14 +25,26 @@ MODULES: dict[str, str] = {
     "tentata_vendita": "Tentata vendita: agenti con furgone, firma del cliente sul tablet",
 }
 
-# Moduli venduti a parte: in nessun pacchetto, si attivano per azienda dal pannello super amministratore.
-EXTRA_MODULES = ["fatturapa", "contabilita", "marketing", "ecommerce", "tentata_vendita"]
+# BluBeauty (parrucchieri, barber, centri estetici) vende due pacchetti — prezzi PROVVISORI del 2026-10-31,
+# da confermare dal titolare (vedi progetto_blucode_informatica/blubeauty/STATO.md):
+# - AGENDA (19 €/mese): agenda con tempi di posa, prenotazione online da smartphone con disdetta autonoma,
+#   conferme WhatsApp, schede clienti;
+# - SALONE (39 €/mese): + cassa con registratore telematico e stampante termica, prodotti e magazzino, acquisti,
+#   fatture, scadenzario, marketing WhatsApp (messaggi automatici e campagne).
+AGENDA_MODULES = ["agenda", "anagrafiche", "statistiche_base"]
+SALONE_MODULES = AGENDA_MODULES + ["marketing", "pos", "periferiche", "magazzino", "acquisti", "vendite", "scadenzario"]
 
 PLAN_MODULES: dict[str, list[str]] = {
-    "BASE": ["anagrafiche", "magazzino", "acquisti", "vendite", "scadenzario", "statistiche_base"],
+    "AGENDA": AGENDA_MODULES,
+    "SALONE": SALONE_MODULES,
 }
-PLAN_MODULES["PLUS"] = PLAN_MODULES["BASE"] + ["pos", "periferiche"]
-PLAN_MODULES["PRO"] = PLAN_MODULES["PLUS"] + ["statistiche_avanzate"]
+
+# Moduli venduti a parte: in nessun pacchetto, si attivano per azienda dal pannello super amministratore.
+EXTRA_MODULES = ["fatturapa"]
+
+# Moduli a catalogo di BluBeauty (menu del cliente, pannello). Gli altri moduli ereditati da BluGest
+# (statistiche avanzate, tentata vendita, contabilità, e-commerce) restano nel codice ma non si vendono.
+CATALOG_MODULES = [m for m in MODULES if m in set(SALONE_MODULES) | set(EXTRA_MODULES)]
 
 STATUS_LABELS = {
     "prova": "In prova",

@@ -48,7 +48,7 @@ def app_status(ctx: TenantContext = Depends(get_tenant_ctx)):
         **st.to_dict(),
         "banner": banner,
         "menu": [{"code": code, "label": label, "enabled": code in st.modules, "extra": code in logic.EXTRA_MODULES}
-                 for code, label in logic.MODULES.items()],
+                 for code, label in logic.MODULES.items() if code in logic.CATALOG_MODULES],
     }
 
 
