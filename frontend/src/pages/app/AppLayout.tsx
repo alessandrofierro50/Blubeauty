@@ -1,6 +1,6 @@
-import { Alert, Anchor, AppShell, Badge, Burger, Button, Divider, Group, Menu, Modal, NavLink, Switch, Text, UnstyledButton } from '@mantine/core'
+import { Alert, Anchor, AppShell, Badge, Burger, Button, CloseButton, Divider, Group, Menu, Modal, NavLink, Switch, Text, TextInput, UnstyledButton } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarUser, IconCalendarPlus, IconCalendarDollar, IconSun, IconUserHeart, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook } from '@tabler/icons-react'
+import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarUser, IconCalendarPlus, IconCalendarDollar, IconSun, IconUserHeart, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook, IconSearch } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -67,6 +67,40 @@ const SECTIONS: Record<string, { label: string; links: [string, string, string?]
   },
 }
 
+// Parole con cui si cerca una funzione oltre al suo nome (casella «Cerca funzione»)
+const KEYWORDS: Record<string, string> = {
+  '/agenda': 'appuntamenti calendario prenotazioni giorno',
+  '/agenda/clienti': 'clienti schede rubrica telefono compleanno scheda tecnica colore punti tessera',
+  '/agenda/servizi': 'servizi listino prezzi operatori parrucchiere estetista durata posa cabine',
+  '/agenda/turni': 'turni ferie malattia permesso assenze orario chiusura festivi riposo giorno libero',
+  '/agenda/impostazioni': 'impostazioni orari apertura prenotazione online link whatsapp salone',
+  '/marketing': 'marketing whatsapp messaggi promemoria campagne compleanno fidelity fedelta punti premi tessere recensioni',
+  '/articoli': 'prodotti articoli shampoo vendita rivendita codice a barre',
+  '/clienti': 'anagrafica clienti partita iva codice fiscale fatturazione',
+  '/fornitori': 'fornitori grossista',
+  '/promozioni': 'promozioni sconti offerte',
+  '/tabelle': 'iva aliquote pagamenti unita di misura categorie marche listini',
+  '/magazzino/giacenze': 'giacenze scorte quantita disponibili',
+  '/magazzino/operazione': 'carico scarico rettifica',
+  '/magazzino/inventari': 'inventario conta',
+  '/vendite': 'fatture note di credito documenti',
+  '/statistiche': 'statistiche incassi fatturato andamento',
+  '/scadenzario': 'scadenze incassi pagamenti rate',
+  '/cassa': 'cassa scontrino registratore vendita al banco incasso copia cortesia',
+  '/pos/aperture': 'chiusura cassa z fondo cassa quadratura',
+  '/pos/casse': 'casse reparti tasti rapidi',
+  '/periferiche': 'registratore telematico stampante termica agent periferiche',
+  '/acquisti': 'acquisti ordini fornitore ddt fatture passive',
+  '/impostazioni/azienda': 'dati azienda logo intestazione stampe',
+  '/impostazioni/vendite': 'numerazione documenti',
+  '/impostazioni/fatturazione-elettronica': 'fatturazione elettronica sdi aruba xml',
+  '/utenti': 'utenti password accessi dipendenti',
+  '/abbonamento': 'abbonamento pagamento rinnovo pacchetto',
+}
+
+/** Testo senza accenti e in minuscolo, per cercare «piu» e trovare «più». */
+const plain = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
 export type AppCtx = { me: any; status: any; reload: () => void; simple?: boolean; setSimple?: (v: boolean) => void }
 
 const SIMPLE_KEY = 'blubeauty_semplice'
@@ -85,6 +119,7 @@ export default function AppLayout() {
   const [me, setMe] = useState<any>(null)
   const [status, setStatus] = useState<any>(null)
   const [blocked, setBlocked] = useState<string | null>(null)
+  const [q, setQ] = useState('')  // casella «Cerca funzione» del menu completo
   const [pwOpen, setPwOpen] = useState(false)
   // Modalità semplice (predefinita): poche voci grandi per chi non vuole cercare le funzioni
   const [simpleMode, setSimpleMode] = useState(readSimple)
@@ -149,6 +184,29 @@ export default function AppLayout() {
 
   const banner = status.banner
   const simple = simpleMode && status.menu.some((m: any) => m.code === 'agenda' && m.enabled)
+  const enabledMod = (code: string) => status.menu.some((x: any) => x.code === code && x.enabled)
+  const functions: { to: string; label: string; section: string; Icon: any }[] = [
+    ...status.menu.filter((m: any) => m.enabled && SECTIONS[m.code]).flatMap((m: any) => SECTIONS[m.code].links
+      .filter(([, , mod]) => !mod || enabledMod(mod))
+      .map(([to, label]) => ({ to, label, section: SECTIONS[m.code].label, Icon: ICONS[m.code] ?? IconBox }))),
+    ...(me.user.role === 'amministratore' ? [
+      { to: '/impostazioni/azienda', label: 'Dati azienda e stampe', section: 'Impostazioni', Icon: IconBuildingStore },
+      { to: '/impostazioni/vendite', label: 'Documenti di vendita', section: 'Impostazioni', Icon: IconNumbers },
+      ...(enabledMod('fatturapa') ? [{ to: '/impostazioni/fatturazione-elettronica', label: 'Fatturazione elettronica', section: 'Impostazioni', Icon: IconFileInvoice }] : []),
+      { to: '/utenti', label: 'Utenti', section: 'Impostazioni', Icon: IconUsers },
+      { to: '/abbonamento', label: 'Abbonamento', section: 'Impostazioni', Icon: IconCreditCard },
+    ] : []),
+  ]
+  const words = plain(q).split(/\s+/).filter(Boolean)
+  const found = words.length ? functions
+    .map((f) => {
+      const name = plain(f.label), all = `${name} ${plain(f.section)} ${plain(KEYWORDS[f.to] ?? '')}`
+      if (!words.every((w) => all.includes(w))) return null
+      const sec = `${name} ${plain(f.section)}`
+      return { ...f, score: words.every((w) => name.includes(w)) ? 0 : words.every((w) => sec.includes(w)) ? 1 : 2 }  // prima il nome, poi il gruppo, poi le parole chiave
+    })
+    .filter((f): f is NonNullable<typeof f> => !!f)
+    .sort((a, b) => a.score - b.score) : []
   return (
     <AppShell header={{ height: 60 }} navbar={{ width: simple ? 280 : 250, breakpoint: 'sm', collapsed: { mobile: !opened } }} padding="lg">
       <AppShell.Header>
@@ -197,8 +255,22 @@ export default function AppLayout() {
             <Switch size="md" label="Mostra tutte le funzioni" checked={false} onChange={() => setSimple(false)} />
           </>
         ) : (<>
-        <Switch size="md" mb="sm" label="Modalità semplice" checked={false} onChange={() => setSimple(true)} />
-        <NavLink label="Home" leftSection={<IconHome size={18} />} active={loc.pathname === '/'} onClick={() => { nav('/'); close() }} />
+        <Switch size="md" mb="sm" style={{ flexShrink: 0 }} label="Modalità semplice" checked={false} onChange={() => setSimple(true)} />
+        <Button fullWidth mb="xs" style={{ flexShrink: 0 }} variant={loc.pathname === '/' ? 'filled' : 'light'} leftSection={<IconHome size={18} />} justify="flex-start"
+          onClick={() => { setQ(''); nav('/'); close() }}>Schermata principale</Button>
+        <TextInput mb="xs" style={{ flexShrink: 0 }} placeholder="Cerca funzione…" leftSection={<IconSearch size={16} />} value={q} data-testid="cerca-funzione"
+          rightSection={q ? <CloseButton size="sm" onClick={() => setQ('')} aria-label="Svuota la ricerca" /> : null}
+          onChange={(e) => setQ(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setQ('')
+            if (e.key === 'Enter' && found[0]) { nav(found[0].to); setQ(''); close() }
+          }} />
+        {q.trim() ? (
+          found.length ? found.map((f, i) => (
+            <NavLink key={f.to} label={f.label} description={f.section} leftSection={<f.Icon size={18} />} active={i === 0} variant="light"
+              onClick={() => { nav(f.to); setQ(''); close() }} />
+          )) : <Text size="sm" c="dimmed" px="sm" py="xs">Nessuna funzione trovata per «{q.trim()}»</Text>
+        ) : (<>
         {/* Menu essenziale: solo i moduli attivi e già disponibili. Gli altri sono elencati nella Home. */}
         {status.menu.filter((m: any) => m.enabled && SECTIONS[m.code]).map((m: any) => {
           const Icon = ICONS[m.code] ?? IconBox
@@ -222,6 +294,7 @@ export default function AppLayout() {
             <NavLink label="Abbonamento" leftSection={<IconCreditCard size={18} />} active={loc.pathname === '/abbonamento'} onClick={() => { nav('/abbonamento'); close() }} />
           </>
         )}
+        </>)}
         </>)}
       </AppShell.Navbar>
       <AppShell.Main>

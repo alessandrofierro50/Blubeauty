@@ -67,6 +67,8 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 - Cassa (`/cassa`): «Copia cortesia» (F1, nella barra in alto, dopo la vendita e in «Scontrini») = copia NON fiscale
   dell'ultimo scontrino sul registratore: `POST /api/pos/scontrini/{id}/stampa` con `where: registratore` → `rt.nonfiscal`
   da `periferiche.service.text_receipt` (intestazione `rt_skip`, riga `rt_only` «NON VALIDO COME DOC. COMMERCIALE»).
+- Menu completo: tasto «Schermata principale» e casella «Cerca funzione» (`AppLayout.tsx`: voci dei moduli attivi +
+  `KEYWORDS` per percorso, senza accenti; ordine nome > gruppo > parole chiave; Invio apre la prima, Esc svuota).
 - Barra in alto: `<HeaderAction>` (components.tsx) mette il pulsante principale di una pagina accanto al pacchetto
   (es. «Conferma 09:30» nel nuovo appuntamento).
 - Frontend: modalità semplice predefinita (`localStorage blubeauty_semplice`) in `AppLayout`; pagine `src/pages/salone/`
