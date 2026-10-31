@@ -153,3 +153,112 @@ def send_campaign(body: CampaignIn, ctx: TenantContext = Depends(mk_admin)):
     msg.send_campaign(ctx.db, ctx.tenant_id, c, {"salone": agenda.salon_name(ctx.db, ctx.tenant_id),
                                                    "link": agenda.public_link(ctx.db, ctx.tenant_id)})
     return campaign_out(c)
+
+
+# ------------------------------------------------------------------------------------- raccolta punti e tessere
+from app.anagrafiche.models import Party  # noqa: E402
+from app.marketing import loyalty  # noqa: E402
+from app.marketing.models import LoyaltyReward  # noqa: E402
+
+
+def loyalty_settings_out(ctx: TenantContext) -> dict:
+    st = loyalty.settings(ctx.db, ctx.tenant_id)
+    return {"enabled": st.enabled, "points_per_euro": st.points_per_euro, "welcome_points": st.welcome_points,
+            "referral_points": st.referral_points, "card_prefix": st.card_prefix,
+            "rewards": [reward_out(r) for r in loyalty.rewards(ctx.db, ctx.tenant_id, active_only=False)]}
+
+
+def reward_out(r: LoyaltyReward) -> dict:
+    return {"id": str(r.id), "name": r.name, "points": r.points, "kind": r.kind, "value": r.value,
+            "service_id": str(r.service_id) if r.service_id else None, "active": r.active}
+
+
+@router.get("/fidelity")
+def get_loyalty(ctx: TenantContext = Depends(mk_reader)):
+    return loyalty_settings_out(ctx)
+
+
+class LoyaltyIn(BaseModel):
+    enabled: bool = True
+    points_per_euro: int = Field(1, ge=0, le=100)
+    welcome_points: int = Field(0, ge=0, le=10000)
+    referral_points: int = Field(50, ge=0, le=10000)
+    card_prefix: str = Field("BB", pattern=r"^[A-Z0-9]{1,6}$")
+
+
+@router.put("/fidelity")
+def put_loyalty(body: LoyaltyIn, ctx: TenantContext = Depends(mk_admin)):
+    st = loyalty.settings(ctx.db, ctx.tenant_id)
+    for k, v in body.model_dump().items():
+        setattr(st, k, v)
+    ctx.db.flush()
+    return loyalty_settings_out(ctx)
+
+
+class RewardIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    points: int = Field(ge=1, le=100000)
+    kind: str = Field("sconto_euro", pattern="^(sconto_euro|sconto_percento|servizio)$")
+    value: int = Field(0, ge=0, le=1000)
+    service_id: uuid.UUID | None = None
+    active: bool = True
+
+
+@router.post("/fidelity/premi", status_code=201)
+def create_reward(body: RewardIn, ctx: TenantContext = Depends(mk_admin)):
+    if body.kind == "servizio" and not body.service_id:
+        raise HTTPException(422, "Scegli il servizio in omaggio")
+    loyalty.settings(ctx.db, ctx.tenant_id)
+    r = LoyaltyReward(tenant_id=ctx.tenant_id, **body.model_dump())
+    ctx.db.add(r)
+    ctx.db.flush()
+    return reward_out(r)
+
+
+@router.put("/fidelity/premi/{reward_id}")
+def update_reward(reward_id: uuid.UUID, body: RewardIn, ctx: TenantContext = Depends(mk_admin)):
+    r = ctx.db.get(LoyaltyReward, reward_id)
+    if r is None:
+        raise HTTPException(404, "Premio non trovato")
+    for k, v in body.model_dump().items():
+        setattr(r, k, v)
+    ctx.db.flush()
+    return reward_out(r)
+
+
+def _party(ctx: TenantContext, party_id) -> Party:
+    p = ctx.db.get(Party, party_id)
+    if p is None:
+        raise HTTPException(404, "Cliente non trovato")
+    return p
+
+
+@router.post("/fidelity/clienti/{party_id}/tessera", status_code=201)
+def issue_card(party_id: uuid.UUID, ctx: TenantContext = Depends(mk_reader)):
+    p = _party(ctx, party_id)
+    c = loyalty.issue_card(ctx.db, ctx.tenant_id, p, user=ctx.user.full_name)
+    return {"number": c.number, "points": loyalty.balance(ctx.db, p.id), "name": p.name,
+            "salon": agenda.salon_name(ctx.db, ctx.tenant_id)}
+
+
+class AdjustIn(BaseModel):
+    points: int = Field(ge=-100000, le=100000)
+    note: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/fidelity/clienti/{party_id}/rettifica")
+def adjust(party_id: uuid.UUID, body: AdjustIn, ctx: TenantContext = Depends(mk_admin)):
+    p = _party(ctx, party_id)
+    if loyalty.balance(ctx.db, p.id) + body.points < 0:
+        raise HTTPException(422, "Il saldo non può diventare negativo")
+    loyalty.add(ctx.db, ctx.tenant_id, p, body.points, "rettifica", note=body.note, user=ctx.user.full_name)
+    return {"points": loyalty.balance(ctx.db, p.id)}
+
+
+@router.get("/fidelity/tessera/{number}")
+def find_card(number: str, ctx: TenantContext = Depends(mk_reader)):
+    """Lettura della tessera col lettore di codici a barre: porta alla scheda del cliente."""
+    p = loyalty.find_by_card(ctx.db, number)
+    if p is None:
+        raise HTTPException(404, "Tessera non trovata")
+    return {"party_id": str(p.id), "name": p.name, "points": loyalty.balance(ctx.db, p.id)}

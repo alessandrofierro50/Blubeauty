@@ -287,6 +287,7 @@ TENANT_TABLES += [
     "agenda_service_staff", "agenda_service_resources", "agenda_client_profiles", "agenda_technical_cards",
     "agenda_appointments", "agenda_appointment_items",
     "marketing_settings", "messages", "automations", "campaigns",
+    "loyalty_settings", "loyalty_rewards", "loyalty_cards", "loyalty_moves",
 ]
 
 from app.anagrafiche import models as _anagrafiche_models  # noqa: E402,F401  (registra i modelli)

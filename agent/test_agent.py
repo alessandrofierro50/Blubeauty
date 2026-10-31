@@ -166,3 +166,27 @@ def test_esito_al_server(monkeypatch):
                                                                                "address": "127.0.0.1:1", "options": {}}})
     assert posted[0][1] == "/api/agent/lavori/j1/esito" and posted[0][2]["ok"] and posted[0][2]["result"]["number"]
     assert posted[1][2]["ok"] is False and "non raggiungibile" in posted[1][2]["error"]
+
+
+def test_documento_non_fiscale_su_registratore(tmp_path):
+    """Ricevuta NON fiscale (promemoria, preconto, punti) stampata sul registratore telematico."""
+    ricevuta = {"lines": [{"type": "text", "text": "SALONE AURORA", "align": "center", "bold": True}, {"type": "line"},
+                          {"type": "text", "text": "Colore + piega", "right": "65,00"}, {"type": "feed"},
+                          {"type": "barcode", "data": "BB000123", "label": "Tessera BB000123"},
+                          {"type": "text", "text": "DOCUMENTO NON FISCALE", "align": "center"}, {"type": "cut"}]}
+    sent = {}
+
+    def ok(url, data, headers, timeout):
+        sent.update(url=url, data=data.decode())
+        return b'<response success="true" code="" status="2"></response>'
+
+    res = A.EpsonRT("192.168.1.50", {}, http=ok).run("rt.nonfiscal", ricevuta)
+    assert res["printed"] and "<beginNonFiscal" in sent["data"] and "<endNonFiscal" in sent["data"]
+    assert 'data="Colore + piega' in sent["data"] and "65,00" in sent["data"] and "Tessera BB000123" in sent["data"]
+    assert "printRecItem" not in sent["data"]  # niente righe fiscali
+    res = A.CustomRT("192.168.1.51", {}, http=ok).run("rt.nonfiscal", ricevuta)
+    assert sent["url"].endswith("/xml/printer.htm") and "<printerNonFiscal>" in sent["data"] and res["rows"] == 6
+    sim = A.SimulatedRT("", {}, state_file=tmp_path / "rt.json").run("rt.nonfiscal", ricevuta)
+    assert sim["simulated"] and sim["rows"] == 6
+    rows = A.text_rows(ricevuta, 30)
+    assert rows[0].strip() == "SALONE AURORA" and rows[2].endswith("65,00") and len(rows[2]) == 30

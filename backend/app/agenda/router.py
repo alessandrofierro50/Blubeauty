@@ -265,6 +265,7 @@ class ClientIn(BaseModel):
     privacy: bool = True
     marketing: bool = False
     notes: str | None = None
+    referred_by: uuid.UUID | None = None  # «porta un'amica»: chi l'ha presentata
 
 
 def client_row(p: Party, prof: ClientProfile | None) -> dict:
@@ -292,11 +293,14 @@ def create_client(body: ClientIn, ctx: TenantContext = Depends(writer)):
     p = svc.new_client(ctx.db, ctx.tenant_id, body.first_name, body.last_name, body.mobile, body.email, body.privacy, body.marketing)
     prof = svc.profile(ctx.db, ctx.tenant_id, p)
     prof.birth_date, prof.notes = body.birth_date, body.notes
+    if body.referred_by and ctx.db.get(Party, body.referred_by):
+        prof.referred_by_party_id = body.referred_by
     ctx.db.flush()
     return client_row(p, prof)
 
 
 class ConsentIn(BaseModel):
+    referred_by: uuid.UUID | None = None
     privacy: bool | None = None
     marketing: bool | None = None
     birth_date: date | None = None
@@ -315,6 +319,8 @@ def update_client_profile(party_id: uuid.UUID, body: ConsentIn, ctx: TenantConte
         prof.birth_date = body.birth_date
     if "notes" in body.model_fields_set:
         prof.notes = body.notes
+    if "referred_by" in body.model_fields_set and body.referred_by != p.id:
+        prof.referred_by_party_id = body.referred_by
     ctx.db.flush()
     return client_row(p, prof)
 
@@ -331,7 +337,20 @@ def client_detail(party_id: uuid.UUID, ctx: TenantContext = Depends(reader)):
     cards = ctx.db.scalars(select(TechnicalCard).where(TechnicalCard.party_id == p.id).order_by(TechnicalCard.created_at.desc()))
     appts = ctx.db.scalars(select(Appointment).where(Appointment.party_id == p.id).order_by(Appointment.starts_at.desc()).limit(50))
     msgs = ctx.db.scalars(select(Message).where(Message.party_id == p.id).order_by(Message.created_at.desc()).limit(30))
-    return {**client_row(p, prof), "cards": [card_out(c) for c in cards],
+    from app.marketing import loyalty
+    loyalty_out = None
+    if "marketing" in ctx.state.modules:
+        pts = loyalty.balance(ctx.db, p.id)
+        c = loyalty.card(ctx.db, p.id)
+        moves = ctx.db.scalars(select(loyalty.LoyaltyMove).where(loyalty.LoyaltyMove.party_id == p.id)
+                               .order_by(loyalty.LoyaltyMove.created_at.desc()).limit(20))
+        ref = ctx.db.get(Party, prof.referred_by_party_id) if prof and prof.referred_by_party_id else None
+        loyalty_out = {"points": pts, "card": c.number if c else None, "next": loyalty.next_reward(ctx.db, ctx.tenant_id, pts),
+                       "referred_by": {"id": str(ref.id), "name": ref.name} if ref else None,
+                       "rewards": [{"id": str(r.id), "name": r.name, "points": r.points, "available": r.points <= pts}
+                                   for r in loyalty.rewards(ctx.db, ctx.tenant_id)],
+                       "moves": [{"points": m.points, "reason": m.reason, "note": m.note, "created_at": s(m.created_at)} for m in moves]}
+    return {**client_row(p, prof), "loyalty": loyalty_out, "cards": [card_out(c) for c in cards],
             "appointments": [appointment_out(ctx, a) for a in appts],
             "messages": [message_out(m) for m in reversed(list(msgs))]}
 
@@ -486,6 +505,7 @@ class CheckoutIn(BaseModel):
     discount: Decimal | None = Field(None, ge=0)
     lottery_code: str | None = Field(None, max_length=8)
     rt_result: dict | None = None
+    reward_id: uuid.UUID | None = None  # premio fedeltà riscattato
 
 
 @router.post("/appuntamenti/{appt_id}/incassa")
@@ -504,7 +524,7 @@ def checkout(appt_id: uuid.UUID, body: CheckoutIn, ctx: TenantContext = Depends(
         ctx.db, ctx.tenant_id, a, ctx.user.id, register_id=body.register_id,
         payments=[{"method": p.method, "amount": str(p.amount)} for p in body.payments], invoice=body.invoice,
         products=[p.model_dump(mode="json") for p in body.products], discount=body.discount,
-        lottery_code=body.lottery_code, rt_result=body.rt_result, marketing="marketing" in ctx.state.modules)
+        lottery_code=body.lottery_code, rt_result=body.rt_result, marketing="marketing" in ctx.state.modules, reward_id=body.reward_id)
     from app.pos import service as pos
     return {"appointment": appointment_out(ctx, a, full=True), "receipt": pos.receipt_out(ctx.db, d),
             "change": s(change), "replayed": replay}
@@ -524,3 +544,42 @@ def summary(ctx: TenantContext = Depends(reader)):
     return {"today": len(live), "expected": s(sum((i.price for a in live for i in a.items), Decimal(0))),
             "online_30": online or 0, "to_collect": len([a for a in live if a.status != "pagato"]),
             "booking_url": svc.public_link(ctx.db, ctx.tenant_id)}
+
+
+# ---------------------------------------------------------------------------------------- ricevuta non fiscale
+@router.get("/appuntamenti/{appt_id}/ricevuta")
+def receipt_preview(appt_id: uuid.UUID, ctx: TenantContext = Depends(reader)):
+    """Righe della ricevuta non fiscale (per l'anteprima e la stampa dal browser su una termica da 80 mm)."""
+    from app.agenda import receipt
+    return receipt.build(ctx.db, ctx.tenant_id, _get(ctx, Appointment, appt_id), "marketing" in ctx.state.modules)
+
+
+class PrintIn(BaseModel):
+    where: str = Field("termica", pattern="^(termica|registratore)$")
+    register_id: uuid.UUID | None = None
+
+
+@router.post("/appuntamenti/{appt_id}/ricevuta")
+def receipt_print(appt_id: uuid.UUID, body: PrintIn, ctx: TenantContext = Depends(writer)):
+    """Stampa la ricevuta NON fiscale sulla termica da 80 mm o sul registratore telematico (documento non fiscale),
+    tramite BluBeauty Agent sul computer della cassa."""
+    from app.agenda import receipt
+    from app.periferiche import service as per
+    from app.pos.models import PosRegister
+    if "periferiche" not in ctx.state.modules:
+        raise HTTPException(403, {"code": "modulo_non_incluso", "module": "periferiche",
+                                  "message": "Stampanti e registratore sono nel pacchetto Salone."})
+    a = _get(ctx, Appointment, appt_id)
+    cfg = svc.settings(ctx.db, ctx.tenant_id)
+    reg_id = body.register_id or cfg.register_id
+    reg = ctx.db.get(PosRegister, reg_id) if reg_id else None
+    if reg is None:
+        raise HTTPException(422, "Scegli la cassa predefinita in Impostazioni agenda")
+    dev = per.register_device(ctx.db, reg, "printer" if body.where == "termica" else "rt")
+    if dev is None:
+        raise HTTPException(422, "Alla cassa non è collegata una stampante termica" if body.where == "termica"
+                            else "Alla cassa non è collegato un registratore telematico")
+    payload = receipt.build(ctx.db, ctx.tenant_id, a, "marketing" in ctx.state.modules)
+    job = per.enqueue(ctx.db, dev, "print.text" if body.where == "termica" else "rt.nonfiscal", payload,
+                      document_id=a.document_id, user_id=ctx.user.id)
+    return {"job_id": str(job.id), "device": dev.name}

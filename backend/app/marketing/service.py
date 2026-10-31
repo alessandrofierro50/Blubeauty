@@ -29,7 +29,7 @@ _transport: httpx.BaseTransport | None = None  # nei test: httpx.MockTransport
 
 # Automatici dell'agenda (pacchetto AGENDA) e del marketing (pacchetto SALONE)
 AGENDA_KINDS = ["conferma", "promemoria", "disdetta"]
-MARKETING_KINDS = ["grazie", "richiamo", "compleanno", "clienti_persi"]
+MARKETING_KINDS = ["grazie", "richiamo", "compleanno", "clienti_persi", "premio"]
 
 KIND_LABEL = {
     "conferma": "Conferma prenotazione",
@@ -39,6 +39,7 @@ KIND_LABEL = {
     "richiamo": "Richiamo (es. ritocco colore)",
     "compleanno": "Auguri di compleanno",
     "clienti_persi": "Clienti persi",
+    "premio": "Premio fedeltà raggiunto",
     "campagna": "Campagna",
 }
 
@@ -56,6 +57,8 @@ DEFAULT_AUTOMATIONS = {
                      "ritocco! Prenota in un tap: {link}"),
     "compleanno": (None, "Tanti auguri {nome}! 🎂 Per il tuo compleanno hai il 20% di sconto su un trattamento a scelta "
                          "questo mese. Prenota: {link}"),
+    "premio": (None, "Complimenti {nome}! 🎁 Hai {punti} punti fedeltà da {salone}: alla prossima visita puoi avere «{premio}». "
+                     "Prenota qui: {link}"),
     "clienti_persi": (60, "Ciao {nome}, ci manchi! 💙 Torna a trovarci entro fine mese: per te una sorpresa con qualsiasi "
                           "servizio. Prenota: {link}"),
 }

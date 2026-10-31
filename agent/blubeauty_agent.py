@@ -20,6 +20,7 @@ Formato dei lavori (uguale per server e cassa offline), con importi IVA inclusa 
     rt.refund   {lines, payments, reference:{z, number, date, serial} | null, void: bool}
     rt.z / rt.x / status   {}
     print.text  {lines:[{type: text|line|feed|barcode|qr|cut, text, align, bold, size, data}], open_drawer}
+    rt.nonfiscal  stesso formato di print.text, stampato come documento NON fiscale sul registratore telematico
     print.zpl   {zpl, copies}
     scale.read  {}  →  {weight, unit, stable}
 """
@@ -111,6 +112,30 @@ def money(v) -> Decimal:
 
 # =====================================================================================================================
 # Registratori telematici
+
+
+def text_rows(p: dict, width: int) -> list[str]:
+    """Formato neutro di print.text → righe di testo semplice (per i documenti non fiscali del registratore)."""
+    rows = []
+    for ln in p.get("lines", []):
+        t = ln.get("type", "text")
+        if t == "cut":
+            continue
+        if t == "feed":
+            rows += [""] * int(ln.get("lines", 1))
+        elif t == "line":
+            rows.append("-" * width)
+        elif t in ("barcode", "qr"):
+            rows.append(str(ln.get("label") or ln.get("data", ""))[:width])
+        else:
+            text = str(ln.get("text", ""))
+            if ln.get("right"):
+                right = str(ln["right"])
+                text = text[: max(1, width - len(right) - 1)].ljust(width - len(right)) + right
+            align = ln.get("align", "left")
+            text = text[:width]
+            rows.append(text.center(width).rstrip() if align == "center" else text.rjust(width) if align == "right" else text)
+    return rows
 
 
 def department_for(line: dict, options: dict) -> int:
@@ -242,6 +267,11 @@ class EpsonRT:
             return self._info(self.send(self.receipt_xml(p)))
         if kind == "rt.refund":
             return self._info(self.send(self.refund_xml(p)))
+        if kind == "rt.nonfiscal":
+            rows = text_rows(p, int(self.options.get("width") or 42))
+            body = "".join(f'<printNormal operator="1" font="1" data={quoteattr(r or " ")} />' for r in rows)
+            self.send(envelope(f'<printerNonFiscal><beginNonFiscal operator="1" />{body}<endNonFiscal operator="1" /></printerNonFiscal>'))
+            return {"printed": True, "rows": len(rows)}
         if kind in ("rt.z", "rt.x"):
             tag = "printZReport" if kind == "rt.z" else "printXReport"
             resp = self.send(envelope(f'<printerFiscalReport><{tag} operator="1" /></printerFiscalReport>'), timeout=120)
@@ -367,6 +397,12 @@ class CustomRT:
         if kind == "rt.x":
             self.send('<?xml version="1.0" encoding="utf-8"?><printerFiscalReport><printXReport></printXReport></printerFiscalReport>')
             return {}
+        if kind == "rt.nonfiscal":
+            rows = text_rows(p, int(self.options.get("width") or 42))
+            body = "".join(f'<printNormal font="1" data={quoteattr(r or " ")}></printNormal>' for r in rows)
+            self.send('<?xml version="1.0" encoding="utf-8"?><printerNonFiscal><beginNonFiscal></beginNonFiscal>'
+                      f'{body}<endNonFiscal></endNonFiscal></printerNonFiscal>')
+            return {"printed": True, "rows": len(rows)}
         if kind == "status":
             resp = self.send('<?xml version="1.0" encoding="utf-8"?><printerCommand><queryPrinterStatus></queryPrinterStatus></printerCommand>')
             return {"ok": True, "status": resp.get("status")}
@@ -410,6 +446,10 @@ class SimulatedRT:
             return {"z": f"{z:04d}", "date": date.today().isoformat(), "simulated": True}
         if kind in ("rt.x", "status"):
             return {"ok": True, "simulated": True}
+        if kind == "rt.nonfiscal":
+            rows = text_rows(p, 42)
+            log("[simulatore RT] documento NON fiscale\n" + "\n".join(rows))
+            return {"printed": True, "rows": len(rows), "simulated": True}
         raise DeviceError(f"Operazione non prevista: {kind}")
 
 

@@ -162,7 +162,8 @@ class ClientProfile(Base):
     privacy_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     marketing_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     birth_date: Mapped[date | None] = mapped_column(Date)
-    loyalty_points: Mapped[int] = mapped_column(Integer, default=0)
+    loyalty_points: Mapped[int] = mapped_column(Integer, default=0)  # saldo punti (somma di loyalty_moves)
+    referred_by_party_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id", ondelete="SET NULL"))  # «porta un'amica»
     notes: Mapped[str | None] = mapped_column(Text)
 
 

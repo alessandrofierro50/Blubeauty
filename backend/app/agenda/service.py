@@ -16,7 +16,7 @@ import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from decimal import ROUND_DOWN, Decimal
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -427,7 +427,7 @@ def move(db: Session, tenant_id, appt: Appointment, start: datetime, staff_id=No
 # ---------------------------------------------------------------------------------------------------------- cassa
 def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id, payments: list[dict],
              invoice: bool = False, products: list[dict] | None = None, discount: Decimal | None = None,
-             lottery_code: str | None = None, rt_result: dict | None = None, marketing: bool = False):
+             lottery_code: str | None = None, rt_result: dict | None = None, marketing: bool = False, reward_id=None):
     """Incasso dell'appuntamento dalla cassa: scontrino (documento commerciale sul registratore) o fattura."""
     from app.documenti.models import Document
     from app.pos import service as pos
@@ -445,8 +445,15 @@ def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id,
     party = db.get(Party, appt.party_id) if appt.party_id else None
     if invoice and party is None:
         raise fail("Per la fattura serve il cliente")
-    if discount and Decimal(str(discount)) > 0:
-        apply_discount(appt, Decimal(str(discount)))
+    from app.marketing import loyalty
+    reward = loyalty.check_redeem(db, tenant_id, party, reward_id) if reward_id and marketing else None
+    total_discount = Decimal(str(discount or 0))
+    if reward is not None:
+        services_total = sum((i.price for i in appt.items), Decimal(0))
+        total_discount += loyalty.reward_discount(db, reward, services_total - total_discount,
+                                                  {i.service_id: i.price for i in appt.items})
+    if total_discount > 0:
+        apply_discount(appt, total_discount)
     lines = []
     for it in appt.items:
         svc = db.get(AgendaService, it.service_id)
@@ -468,14 +475,22 @@ def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id,
     }
     d, change, replay = pos.create_sale(db, reg, user_id, body)
     appt.document_id, appt.status = d.id, "pagato"
-    if party is not None and not replay:
-        prof = profile(db, tenant_id, party)
-        prof.loyalty_points = (prof.loyalty_points or 0) + int(Decimal(str(d.total)).to_integral_value(ROUND_DOWN))
-        if marketing:
-            ms = msg.settings(db, tenant_id)
-            msg.send_automatic(db, tenant_id, "grazie", party,
-                               {"salone": salon_name(db, tenant_id), "recensione": ms.review_url or public_link(db, tenant_id)},
-                               appointment_id=appt.id, dedupe_key=f"grazie:{appt.id}")
+    if party is not None and not replay and marketing:
+        before = loyalty.balance(db, party.id)
+        if reward is not None:
+            loyalty.add(db, tenant_id, party, -reward.points, "premio", dedupe_key=f"premio:{appt.id}", reward_id=reward.id,
+                        appointment_id=appt.id, document_id=d.id, note=reward.name)
+        loyalty.earn_on_payment(db, tenant_id, party, Decimal(str(d.total)), appointment_id=appt.id, document_id=d.id)
+        after = loyalty.balance(db, party.id)
+        crossed = [r for r in loyalty.rewards(db, tenant_id) if before - (reward.points if reward else 0) < r.points <= after]
+        if crossed:
+            msg.send_automatic(db, tenant_id, "premio", party,
+                               {"salone": salon_name(db, tenant_id), "punti": after, "premio": crossed[-1].name,
+                                "link": public_link(db, tenant_id)}, appointment_id=appt.id, dedupe_key=f"premio:{appt.id}")
+        ms = msg.settings(db, tenant_id)
+        msg.send_automatic(db, tenant_id, "grazie", party,
+                           {"salone": salon_name(db, tenant_id), "recensione": ms.review_url or public_link(db, tenant_id)},
+                           appointment_id=appt.id, dedupe_key=f"grazie:{appt.id}")
     db.flush()
     return d, change, replay
 

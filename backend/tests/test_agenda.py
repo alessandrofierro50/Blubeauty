@@ -312,3 +312,72 @@ def test_whatsapp_cloud_api(client, admin_headers):
         assert payload["to"] == "393331111111" and "Piega" in payload["text"]["body"]
     finally:
         msg._transport = None
+
+
+# ------------------------------------------------------------------------------------------- fidelity e ricevuta
+def test_raccolta_punti_tessera_premi_e_porta_un_amica(client, admin_headers):
+    h, reg, pane, ah = salon_with_register(client, admin_headers, "Punti Salone")
+    c = catalog(client, h)
+    laura = client_(client, h)
+    cfg = client.get(f"{MK}/fidelity", headers=h).json()
+    assert cfg["enabled"] and cfg["points_per_euro"] == 1 and [r["points"] for r in cfg["rewards"]] == [100, 250]
+    # tessera con numero progressivo, si ritrova col lettore
+    card = client.post(f"{MK}/fidelity/clienti/{laura['id']}/tessera", headers=h).json()
+    assert card["number"] == "BB000001"
+    assert client.post(f"{MK}/fidelity/clienti/{laura['id']}/tessera", headers=h).json()["number"] == "BB000001"  # una sola
+    assert client.get(f"{MK}/fidelity/tessera/bb000001", headers=h).json()["party_id"] == laura["id"]
+    # Laura presenta Chiara: alla prima visita pagata di Chiara, Laura riceve 50 punti
+    chiara = client_(client, h, "Chiara", "Colombo", "333 3333333", referred_by=laura["id"])
+    a = book(client, h, chiara, c["piega"], "11:00").json()
+    pay = {"register_id": reg["id"], "payments": [{"method": "contanti", "amount": "22"}]}
+    assert client.post(f"{AG}/appuntamenti/{a['id']}/incassa", headers=h, json=pay).status_code == 200
+    det = client.get(f"{AG}/clienti/{laura['id']}", headers=h).json()
+    assert det["loyalty"]["points"] == 50 and det["loyalty"]["card"] == "BB000001"
+    assert client.get(f"{AG}/clienti/{chiara['id']}", headers=h).json()["loyalty"]["points"] == 22
+    # premio: servono 100 punti
+    a2 = book(client, h, laura, c["colore"], "09:00", c["giulia"]).json()
+    reward = cfg["rewards"][0]["id"]
+    r = client.post(f"{AG}/appuntamenti/{a2['id']}/incassa", headers=h, json={**pay, "reward_id": reward,
+                                                                                "payments": [{"method": "carta", "amount": "60"}]})
+    assert r.status_code == 409 and "servono 100" in r.text
+    assert client.post(f"{MK}/fidelity/clienti/{laura['id']}/rettifica", headers=h,
+                       json={"points": 60, "note": "Punti della vecchia tessera di carta"}).json()["points"] == 110
+    r = client.post(f"{AG}/appuntamenti/{a2['id']}/incassa", headers=h, json={**pay, "reward_id": reward,
+                                                                                "payments": [{"method": "carta", "amount": "60"}]})
+    assert r.status_code == 200, r.text
+    assert Decimal(r.json()["receipt"]["total"]) == Decimal("60.00")  # 65 − 5 € di premio
+    det = client.get(f"{AG}/clienti/{laura['id']}", headers=h).json()
+    assert det["loyalty"]["points"] == 110 - 100 + 60
+    assert {m["reason"] for m in det["loyalty"]["moves"]} >= {"presenta_amica", "rettifica", "premio", "acquisto"}
+    # avviso WhatsApp quando si raggiunge un premio (Laura passa da 10 a 70: nessuno; un'altra visita da 65 sì)
+    a3 = book(client, h, laura, c["colore"], "15:00", c["giulia"]).json()
+    client.post(f"{AG}/appuntamenti/{a3['id']}/incassa", headers=h, json={**pay, "payments": [{"method": "carta", "amount": "65"}]})
+    kinds = [m["kind"] for m in client.get(f"{AG}/clienti/{laura['id']}", headers=h).json()["messages"]]
+    assert "premio" in kinds
+
+
+def test_ricevuta_non_fiscale_termica_e_registratore(client, admin_headers):
+    h, reg, pane, ah = salon_with_register(client, admin_headers, "Ricevute Salone")
+    c = catalog(client, h)
+    laura = client_(client, h)
+    a = book(client, h, laura, c["piega"], "10:00").json()
+    prev = client.get(f"{AG}/appuntamenti/{a['id']}/ricevuta", headers=h).json()["lines"]
+    texts = [ln.get("text", "") for ln in prev]
+    assert "PROMEMORIA APPUNTAMENTO" in texts and "DOCUMENTO NON FISCALE" in texts
+    # la cassa deve essere quella predefinita dell'agenda
+    st = client.get(f"{AG}/impostazioni", headers=h).json()
+    assert client.post(f"{AG}/appuntamenti/{a['id']}/ricevuta", headers=h, json={"where": "registratore"}).status_code == 422
+    client.put(f"{AG}/impostazioni", headers=h, json={**st, "register_id": reg["id"]})
+    # niente termica collegata: errore chiaro
+    r = client.post(f"{AG}/appuntamenti/{a['id']}/ricevuta", headers=h, json={"where": "termica"})
+    assert r.status_code == 422 and "termica" in r.text
+    # sul registratore come documento NON fiscale
+    client.post(f"{AG}/appuntamenti/{a['id']}/incassa", headers=h, json={"payments": [{"method": "carta", "amount": "22"}]})
+    jobs(client, ah)  # lo scontrino fiscale
+    r = client.post(f"{AG}/appuntamenti/{a['id']}/ricevuta", headers=h, json={"where": "registratore"})
+    assert r.status_code == 200, r.text
+    js = jobs(client, ah)
+    assert len(js) == 1 and js[0]["kind"] == "rt.nonfiscal"
+    lines = [ln.get("text", "") for ln in js[0]["payload"]["lines"]]
+    assert "RICEVUTA NON FISCALE" in lines and any(t.startswith("I tuoi punti fedeltà: 22") for t in lines)
+    assert any(t.startswith("Scontrino fiscale n.") for t in lines)

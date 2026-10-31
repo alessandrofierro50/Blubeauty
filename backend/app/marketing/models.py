@@ -10,7 +10,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,7 +41,11 @@ class MarketingSettings(Base):
 
 class Message(Base):
     __tablename__ = "messages"
-    __table_args__ = (Index("ix_messages_party", "tenant_id", "party_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_messages_party", "tenant_id", "party_id", "created_at"),
+        # un messaggio automatico parte una sola volta (promemoria per appuntamento, auguri per anno…)
+        Index("ux_messages_dedupe", "tenant_id", "dedupe_key", unique=True, postgresql_where=text("dedupe_key IS NOT NULL")),
+    )
 
     id: Mapped[uuid.UUID] = pk()
     tenant_id: Mapped[uuid.UUID] = tenant_fk()
@@ -91,4 +95,70 @@ class Campaign(Base):
     filters: Mapped[dict] = mapped_column(JSONType, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(String(120))
+
+
+# ─────────────────────────────────────────────────────────────── fidelity: raccolta punti e tessere
+class LoyaltySettings(Base):
+    """Regole della raccolta punti (una riga per azienda)."""
+
+    __tablename__ = "loyalty_settings"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    points_per_euro: Mapped[int] = mapped_column(Integer, default=1)  # punti per ogni euro speso (interi)
+    welcome_points: Mapped[int] = mapped_column(Integer, default=0)  # alla consegna della tessera
+    referral_points: Mapped[int] = mapped_column(Integer, default=50)  # a chi presenta un'amica, alla sua prima visita pagata
+    card_prefix: Mapped[str] = mapped_column(String(6), default="BB")
+    next_card_number: Mapped[int] = mapped_column(Integer, default=1)  # contatore delle tessere (riga bloccata)
+
+
+class LoyaltyReward(Base):
+    """Premio a soglia: si riscatta in cassa scalando i punti."""
+
+    __tablename__ = "loyalty_rewards"
+
+    id: Mapped[uuid.UUID] = pk()
+    tenant_id: Mapped[uuid.UUID] = tenant_fk()
+    name: Mapped[str] = mapped_column(String(120))
+    points: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(20), default="sconto_euro")  # sconto_euro | sconto_percento | servizio
+    value: Mapped[int] = mapped_column(Integer, default=0)  # euro o percentuale
+    service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agenda_services.id", ondelete="SET NULL"))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class LoyaltyCard(Base):
+    __tablename__ = "loyalty_cards"
+    __table_args__ = (UniqueConstraint("tenant_id", "number"),)
+
+    id: Mapped[uuid.UUID] = pk()
+    tenant_id: Mapped[uuid.UUID] = tenant_fk()
+    party_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("parties.id", ondelete="CASCADE"), index=True)
+    number: Mapped[str] = mapped_column(String(20))  # stampato sulla tessera con il codice a barre
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LoyaltyMove(Base):
+    """Movimento di punti: il saldo è la somma (copiato in agenda_client_profiles.loyalty_points per le liste)."""
+
+    __tablename__ = "loyalty_moves"
+    __table_args__ = (
+        Index("ix_loyalty_moves_party", "tenant_id", "party_id", "created_at"),
+        Index("ux_loyalty_moves_dedupe", "tenant_id", "dedupe_key", unique=True, postgresql_where=text("dedupe_key IS NOT NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = pk()
+    tenant_id: Mapped[uuid.UUID] = tenant_fk()
+    party_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("parties.id", ondelete="CASCADE"))
+    points: Mapped[int] = mapped_column(Integer)  # positivo accumulo, negativo riscatto
+    # acquisto | premio | benvenuto | presenta_amica | rettifica
+    reason: Mapped[str] = mapped_column(String(20))
+    appointment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agenda_appointments.id", ondelete="SET NULL"))
+    document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"))
+    reward_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("loyalty_rewards.id", ondelete="SET NULL"))
+    note: Mapped[str | None] = mapped_column(String(200))
+    dedupe_key: Mapped[str | None] = mapped_column(String(120))  # niente doppi accrediti (es. "acquisto:<appuntamento>")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(String(120))
