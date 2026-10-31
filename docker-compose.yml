@@ -1,53 +1,75 @@
-# Deploy su VPS: docker compose up -d --build
-# Richiede un file .env (vedi .env.example) e il DNS di APP_DOMAIN puntato al server.
+# BluBeauty — avvio:  docker compose up -d --build
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: blubeauty
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?imposta POSTGRES_PASSWORD nel file .env}
+      POSTGRES_USER: blubeauty_owner
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD}
       POSTGRES_DB: blubeauty
-      TZ: Europe/Rome
+      APP_DB_PASSWORD: ${DB_APP_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U blubeauty"]
+      test: ["CMD-SHELL", "pg_isready -U blubeauty_owner -d blubeauty"]
       interval: 5s
-      retries: 10
+      retries: 20
 
-  migrate:
-    build: { context: ., target: migrate }
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  api: &backend
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql://blubeauty:${POSTGRES_PASSWORD}@db:5432/blubeauty?schema=public
+      DATABASE_URL: postgresql+psycopg://blubeauty_app:${DB_APP_PASSWORD}@db:5432/blubeauty
+      DATABASE_OWNER_URL: postgresql+psycopg://blubeauty_owner:${DB_OWNER_PASSWORD}@db:5432/blubeauty
+      REDIS_URL: redis://redis:6379/0
+      PUBLIC_URL: https://${SITE_DOMAIN}
+      MEDIA_DIR: /data/media
+      AGENT_DIR: /agent
+    volumes:
+      - media:/data/media
+      - ./agent:/agent:ro
     depends_on:
       db: { condition: service_healthy }
-    restart: "no"
+      redis: { condition: service_started }
+    command: ["api"]
 
-  app:
-    build: { context: ., target: runner }
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql://blubeauty:${POSTGRES_PASSWORD}@db:5432/blubeauty?schema=public
-      SESSION_PASSWORD: ${SESSION_PASSWORD:?imposta SESSION_PASSWORD nel file .env}
-      APP_URL: https://${APP_DOMAIN:-blubeauty.blucodeinformatica.it}
-    depends_on:
-      migrate: { condition: service_completed_successfully }
+  worker:
+    <<: *backend
+    command: ["worker"]
+    depends_on: [api]
 
-  # Reverse proxy con HTTPS automatico (Let's Encrypt)
-  caddy:
-    image: caddy:2-alpine
+  beat:
+    <<: *backend
+    command: ["beat"]
+    depends_on: [api]
+
+  web:
+    build: ./frontend
     restart: unless-stopped
-    ports: ["80:80", "443:443"]
+    env_file: .env
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:-blubeauty.blucodeinformatica.it}
+      # dietro un nginx già presente (install.sh lo rileva): Caddy serve in http solo su 127.0.0.1, l'HTTPS lo fa nginx
+      CADDY_SITE: ${CADDY_SITE:-${SITE_DOMAIN}}
+    ports:
+      - "${HTTP_BIND:-80}:80"
+      - "${HTTPS_BIND:-443}:443"
+      - "${HTTPS_BIND:-443}:443/udp"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on: [app]
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [api]
 
 volumes:
+  media:
   pgdata:
-  caddy_data:
-  caddy_config:
+  redisdata:
+  caddydata:
+  caddyconfig:

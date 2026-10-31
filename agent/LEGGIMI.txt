@@ -1,0 +1,39 @@
+BluBeauty Agent — collegamento delle periferiche del negozio
+==========================================================
+
+L'agent fa da ponte fra il gestionale (in cloud) e le periferiche del negozio: registratore telematico,
+stampante di ricevute, stampante di etichette, bilancia. Si installa sul computer della cassa (o su un
+computer sempre acceso nella stessa rete delle periferiche).
+
+1. Requisiti
+   - Python 3.9 o successivo (Windows: https://www.python.org, spuntare "Add python.exe to PATH").
+   - Solo per la bilancia su porta seriale/USB:   pip install pyserial
+   - Solo per stampanti installate su Windows (USB): pip install pywin32
+
+2. Abbinamento (una volta sola)
+   Nel gestionale: Vendita al banco › Computer e periferiche › Nuovo computer: compare un codice di 8 caratteri.
+   Sul computer del negozio, nella cartella dell'agent:
+       python blubeauty_agent.py abbina https://indirizzo-del-gestionale CODICE
+
+3. Avvio
+       python blubeauty_agent.py avvia
+   Windows: doppio clic su avvia-agent.bat. Per l'avvio automatico all'accensione, da prompt dei comandi:
+       schtasks /Create /SC ONLOGON /TN "BluBeauty Agent" /TR "\"%CD%\avvia-agent.bat\""
+   Linux: copiare blubeauty-agent.service in /etc/systemd/system/, correggere il percorso e poi
+       systemctl enable --now blubeauty-agent
+
+4. Periferiche
+   Si configurano nel gestionale (indirizzo IP del registratore, porta della bilancia...): l'agent le scarica da solo.
+   Per controllare che rispondano:   python blubeauty_agent.py prova
+
+Cosa fa
+   - Si collega lui al gestionale (connessione in uscita, HTTPS): non serve aprire porte sul router.
+   - Esegue un lavoro alla volta per periferica e restituisce sempre l'esito (numero del documento commerciale,
+     numero di chiusura Z, peso letto...).
+   - Su http://127.0.0.1:8765 risponde solo alla cassa del gestionale (con una chiave dedicata): se manca internet
+     la cassa stampa lo stesso il documento commerciale e lo registra nel gestionale appena torna la rete.
+   - Configurazione e registro: %PROGRAMDATA%\BluBeautyAgent (Windows) oppure ~/.blubeauty-agent (Linux e macOS).
+
+Registratori supportati: Epson FP-81 II RT e FP-90III (protocollo XML in rete), Custom RT in rete (protocollo XML).
+Prima di usare un registratore in negozio fate una prova completa (vendita, reso, chiusura) con il vostro tecnico:
+reparti e aliquote devono corrispondere alla programmazione del registratore.

@@ -1,0 +1,14 @@
+[Unit]
+Description=BluBeauty Agent (periferiche del negozio)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# correggere il percorso della cartella dell'agent
+WorkingDirectory=/opt/blubeauty-agent
+ExecStart=/usr/bin/python3 /opt/blubeauty-agent/blubeauty_agent.py avvia
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

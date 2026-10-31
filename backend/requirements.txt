@@ -1,0 +1,24 @@
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+sqlalchemy==2.0.*
+psycopg[binary]==3.2.*
+alembic==1.14.*
+pydantic-settings==2.6.*
+email-validator==2.2.*
+bcrypt==4.2.*
+pyjwt==2.10.*
+pyotp==2.9.*
+celery[redis]==5.4.*
+jinja2==3.1.*
+python-dateutil==2.9.*
+pytest==8.3.*
+httpx==0.28.*
+python-multipart==0.0.*
+pillow==12.*
+openpyxl==3.1.*
+xlrd==2.0.*
+asn1crypto==1.5.*
+cryptography>=43
+reportlab>=4.0
+lxml==6.*
+pypdf>=4  # solo per i test (testo della proforma)

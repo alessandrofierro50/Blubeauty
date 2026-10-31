@@ -1,0 +1,31 @@
+{
+	email {$ACME_EMAIL}
+	servers {
+		# davanti può esserci nginx (stesso server): si fida dell'IP del visitatore che passa
+		trusted_proxies static private_ranges
+	}
+}
+
+{$CADDY_SITE} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	@static path /assets/*
+	header @static Cache-Control "public, max-age=31536000, immutable"
+}

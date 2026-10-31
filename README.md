@@ -1,75 +1,34 @@
 # BluBeauty
 
-Il gestionale cloud per **parrucchieri, barber e centri estetici** — by *Blu Code Informatica*.
+Gestionale web in abbonamento per piccole e medie imprese italiane.
 
-Produzione: https://blubeauty.blucodeinformatica.it
+## Installazione sulla VPS
 
-## Stack
-
-| Livello | Tecnologia |
-|---|---|
-| Web app + API | Next.js 16 (App Router, Server Actions, Cache Components) · React 19 · TypeScript |
-| UI | Tailwind CSS 4 |
-| Database | PostgreSQL 16 · Prisma 7 (driver adapter `pg`) |
-| Autenticazione | Sessione cifrata in cookie (iron-session) · password bcrypt |
-| Deploy | Docker Compose su VPS · Caddy (HTTPS automatico) |
-
-## Avvio in locale
-
-Requisiti: Node 22+, PostgreSQL 16 (oppure `docker compose up db`).
+1. Nel pannello DNS del dominio crea un record **A** per `blubeauty.blucodeinformatica.it` → `217.76.158.224`.
+2. Collegati alla VPS come root ed esegui:
 
 ```bash
-cp .env.example .env          # imposta DATABASE_URL e SESSION_PASSWORD
-npm install
-npm run db:migrate            # crea le tabelle
-npm run db:seed               # dati demo
-npm run dev                   # http://localhost:3000
+git clone https://github.com/alessandrofierro50/blubeauty.git /opt/blubeauty
+cd /opt/blubeauty
+bash deploy/install.sh
 ```
 
-Login demo: `demo@blubeauty.it` / `demo1234`
+Lo script installa Docker se manca, genera password casuali nel file `.env`, avvia tutto con HTTPS
+automatico e pianifica il backup notturno. Alla fine mostra la password iniziale del super amministratore.
 
-### Script utili
+3. Apri `https://blubeauty.blucodeinformatica.it/admin` e accedi.
 
-| Comando | Cosa fa |
-|---|---|
-| `npm run dev` | server di sviluppo |
-| `npm run build` | genera Prisma Client e build di produzione |
-| `npm run typecheck` / `npm run lint` | controlli statici |
-| `npm run db:migrate` | crea/applica una migrazione in sviluppo |
-| `npm run db:deploy` | applica le migrazioni in produzione |
-| `npm run db:studio` | interfaccia web sul database |
+Per le email automatiche compila i dati SMTP nel file `.env` e riavvia con `docker compose up -d`.
 
-## Deploy su VPS
+## Aggiornare
 
-1. DNS: record `A` di `blubeauty.blucodeinformatica.it` → IP del VPS.
-2. Sul server (Docker installato):
-   ```bash
-   git clone git@github.com:<org>/blubeauty.git /opt/blubeauty && cd /opt/blubeauty
-   cp .env.example .env   # password vere! openssl rand -base64 32
-   docker compose up -d --build
-   ```
-3. Caddy ottiene da solo il certificato HTTPS. Le migrazioni girano a ogni avvio (servizio `migrate`).
-4. Backup notturno: `deploy/backup-db.sh` in crontab.
-
-## Struttura
-
-```
-prisma/              schema dati, migrazioni, seed demo
-src/app/             pagine (App Router)
-  (app)/             area riservata: dashboard, agenda, clienti, servizi
-  login/             accesso
-src/lib/             db, sessione, auth (Data Access Layer), formattazione
-src/components/      componenti UI condivisi (logo, navigazione)
-public/brand/        logo ufficiale e varianti (vedi docs/brand/BRAND.md)
-docs/                specifica funzionale, roadmap, identità visiva
-deploy/              Caddyfile, script di backup
+```bash
+cd /opt/blubeauty && bash deploy/update.sh
 ```
 
-## Regole di sviluppo
+## Documentazione
 
-- **Multi-tenant**: ogni query deve filtrare per `organizationId` preso da `getCurrentUser()` (`src/lib/auth.ts`). Mai fidarsi di ID arrivati dal client senza questo filtro.
-- Ogni Server Action verifica l'utente all'inizio.
-- Next.js 16 con *Cache Components*: i componenti che leggono sessione/DB stanno dentro un `<Suspense>`. Prima di usare API di Next consultare `node_modules/next/dist/docs/`.
-- Orari: il server gira con `TZ=Europe/Rome`.
-
-Documentazione funzionale: [docs/SPECIFICA.md](docs/SPECIFICA.md)
+- `docs/SPECIFICA.md` — requisiti completi
+- `docs/ARCHITETTURA.md` — stack, database, multi-tenant
+- `deploy/MIGRAZIONE.md` — spostamento su un nuovo server
+- `CLAUDE.md` — note di sviluppo e stato delle fasi
