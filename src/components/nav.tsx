@@ -7,10 +7,12 @@ const items = [
   { href: "/dashboard", label: "Dashboard", icon: "◧" },
   { href: "/agenda", label: "Agenda", icon: "▦" },
   { href: "/clienti", label: "Clienti", icon: "☺" },
+  { href: "/cassa", label: "Cassa", icon: "€" },
+  { href: "/marketing", label: "Marketing", icon: "✆" },
   { href: "/servizi", label: "Servizi", icon: "✂" },
 ];
 
-const soon = ["Cassa", "Magazzino", "Pacchetti", "Marketing", "Statistiche", "Impostazioni"];
+const soon = ["Magazzino", "Pacchetti", "Statistiche", "Impostazioni"];
 
 export function Nav() {
   return <NavLinks pathname={usePathname()} />;

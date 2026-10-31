@@ -30,6 +30,7 @@ services:
     environment:
       DATABASE_URL: postgresql://blubeauty:${POSTGRES_PASSWORD}@db:5432/blubeauty?schema=public
       SESSION_PASSWORD: ${SESSION_PASSWORD:?imposta SESSION_PASSWORD nel file .env}
+      APP_URL: https://${APP_DOMAIN:-blubeauty.blucodeinformatica.it}
     depends_on:
       migrate: { condition: service_completed_successfully }
 

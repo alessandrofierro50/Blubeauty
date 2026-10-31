@@ -93,9 +93,9 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
           <Link className="btn-secondary" href={`/agenda?data=${isoDay(next)}`}>
             →
           </Link>
-          <button className="btn-primary" disabled title="In arrivo nella prossima iterazione">
+          <Link className="btn-primary" href={`/agenda/nuovo?data=${isoDay(start)}`}>
             + Appuntamento
-          </button>
+          </Link>
         </div>
       </header>
 
@@ -143,9 +143,10 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
                       ? { top: i.service.processingStartMin * PX_PER_MIN, h: i.service.processingMin * PX_PER_MIN }
                       : null;
                   return (
-                    <div
+                    <Link
+                      href={`/agenda/${i.appointmentId}`}
                       key={i.id}
-                      className="absolute overflow-hidden rounded-lg px-2 py-1 text-xs text-white shadow-sm ring-2 ring-white"
+                      className="absolute overflow-hidden transition hover:brightness-110 rounded-lg px-2 py-1 text-xs text-white shadow-sm ring-2 ring-white"
                       style={{
                         top,
                         height: h,
@@ -170,9 +171,12 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
                           {i.service.name}
                           {i.resource ? ` · ${i.resource.name}` : ""}
                         </p>
-                        <p className="opacity-75">{statusLabel[i.appointment.status]}</p>
+                        <p className="opacity-75">
+                          {statusLabel[i.appointment.status]}
+                          {i.appointment.channel === "ONLINE" ? " · 📱 online" : ""}
+                        </p>
                       </div>
-                    </div>
+                    </Link>
                   );
               })}
             </div>

@@ -22,17 +22,27 @@ enum BusinessType {
 }
 
 model Organization {
-  id           String       @id @default(cuid())
-  name         String
-  slug         String       @unique // usato per la pagina di prenotazione pubblica
-  businessType BusinessType @default(MIXED)
-  vatNumber    String? // partita IVA
-  fiscalCode   String?
-  email        String?
-  phone        String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id                String       @id @default(cuid())
+  name              String
+  slug              String       @unique // usato per la pagina di prenotazione pubblica
+  businessType      BusinessType @default(MIXED)
+  vatNumber         String? // partita IVA
+  fiscalCode        String?
+  email             String?
+  phone             String?
+  // Sede legale (intestazione scontrini e fatture)
+  address           String?
+  zip               String?
+  city              String?
+  province          String?
+  whatsappNumber    String? // numero WhatsApp Business
+  cancelHoursBefore Int          @default(24) // disdetta online consentita fino a N ore prima
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
+  messages          Message[]
+  campaigns         Campaign[]
+  automations       Automation[]
   locations         Location[]
   memberships       Membership[]
   staff             StaffMember[]
@@ -220,6 +230,14 @@ model Client {
   birthDate          DateTime?    @db.Date
   gender             String?
   fiscalCode         String?
+  // Dati di fatturazione (fattura elettronica)
+  vatNumber          String?
+  address            String?
+  zip                String?
+  city               String?
+  province           String?
+  sdiCode            String? // codice destinatario
+  pec                String?
   notes              String?
   // Consensi GDPR
   privacyConsentAt   DateTime?
@@ -230,6 +248,7 @@ model Client {
   updatedAt          DateTime     @updatedAt
 
   appointments   Appointment[]
+  messages       Message[]
   technicalCards TechnicalCard[]
   packages       ClientPackage[]
   sales          Sale[]
@@ -296,11 +315,15 @@ model Appointment {
   channel        BookingChannel    @default(STAFF)
   notes          String?
   depositAmount  Decimal?          @db.Decimal(10, 2) // caparra anti no-show
+  // Link personale che il cliente usa per vedere/disdire l'appuntamento
+  publicToken    String            @unique @default(cuid())
+  cancelledAt    DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  items AppointmentItem[]
-  sale  Sale?
+  items    AppointmentItem[]
+  messages Message[]
+  sale     Sale?
 
   @@index([organizationId, locationId, startsAt])
 }
@@ -429,6 +452,7 @@ model Sale {
   discount       Decimal       @default(0) @db.Decimal(10, 2)
   fiscalDocType  FiscalDocType @default(NONE)
   fiscalDocRef   String? // numero documento commerciale / fattura
+  fiscalDocAt    DateTime?
   createdAt      DateTime      @default(now())
   closedAt       DateTime?
 
@@ -477,4 +501,101 @@ model Payment {
   method    PaymentMethod
   amount    Decimal       @db.Decimal(10, 2)
   createdAt DateTime      @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────
+// Comunicazione e marketing
+// ─────────────────────────────────────────────────────────────
+
+enum MessageChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+enum MessageKind {
+  CONFIRMATION // conferma prenotazione
+  REMINDER // promemoria
+  CANCELLATION // conferma disdetta
+  THANK_YOU // ringraziamento + richiesta recensione
+  RECALL // richiamo (es. ritocco colore)
+  BIRTHDAY
+  WIN_BACK // clienti persi
+  CAMPAIGN // campagna manuale
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model Message {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  appointmentId  String?
+  appointment    Appointment?   @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  campaign       Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  channel        MessageChannel @default(WHATSAPP)
+  kind           MessageKind
+  to             String
+  body           String
+  status         MessageStatus  @default(QUEUED)
+  inbound        Boolean        @default(false) // risposta del cliente
+  providerId     String? // id del messaggio presso il provider (Meta / SMS gateway)
+  createdAt      DateTime       @default(now())
+  sentAt         DateTime?
+
+  @@index([organizationId, createdAt])
+  @@index([clientId, createdAt])
+}
+
+enum CampaignSegment {
+  ALL // tutti i clienti con consenso marketing
+  INACTIVE_60 // non vengono da 60+ giorni
+  BIRTHDAY_MONTH // compleanno nel mese
+  WITH_PACKAGE // hanno un pacchetto attivo
+}
+
+enum CampaignStatus {
+  DRAFT
+  SENT
+}
+
+model Campaign {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  channel        MessageChannel  @default(WHATSAPP)
+  segment        CampaignSegment @default(ALL)
+  body           String
+  status         CampaignStatus  @default(DRAFT)
+  createdAt      DateTime        @default(now())
+  sentAt         DateTime?
+
+  messages Message[]
+
+  @@index([organizationId])
+}
+
+// Messaggi automatici (promemoria, richiami, compleanni...)
+model Automation {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind           MessageKind
+  channel        MessageChannel @default(WHATSAPP)
+  enabled        Boolean        @default(true)
+  // Per i promemoria: ore prima; per i richiami: giorni dopo l'ultima visita
+  offset         Int?
+  template       String
+
+  @@unique([organizationId, kind])
 }
