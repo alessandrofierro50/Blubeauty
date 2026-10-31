@@ -1,11 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <defs>
-    <linearGradient id="a1" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#0B3B8C"/><stop offset="1" stop-color="#2F7BEA"/></linearGradient>
-    <linearGradient id="a2" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2F7BEA"/><stop offset="1" stop-color="#8CC4FF"/></linearGradient>
-  </defs>
-  <g transform="translate(0,2)">
-    <path d="M50 92 C30 70 32 40 50 18 C68 40 70 70 50 92Z" fill="url(#a2)" opacity=".85" transform="rotate(-38 50 92)"/>
-    <path d="M50 92 C30 70 32 40 50 18 C68 40 70 70 50 92Z" fill="url(#a2)" opacity=".85" transform="rotate(38 50 92)"/>
-    <path d="M50 92 C30 70 32 40 50 8 C68 40 70 70 50 92Z" fill="url(#a1)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2 -1 110 110" role="img" aria-label="BluBeauty">
+  <defs><linearGradient id="bb" gradientUnits="userSpaceOnUse" x1="0" y1="10" x2="0" y2="100"><stop offset="0" stop-color="#3B8BFF"/><stop offset="1" stop-color="#0B2A5B"/></linearGradient></defs>
+  <g fill="none" stroke="url(#bb)" stroke-width="9" stroke-linecap="round">
+    <path d="M51 24V96"/><path d="M63 24V96"/>
+    <circle cx="84" cy="74" r="20"/><circle cx="30" cy="74" r="20"/>
+    <path d="M63 24C66 14 74 10 82 12" stroke-width="4.5"/>
+    <path d="M51 24C48 14 40 10 32 12" stroke-width="4.5"/>
   </g>
 </svg>

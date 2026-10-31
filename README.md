@@ -60,8 +60,8 @@ src/app/             pagine (App Router)
   login/             accesso
 src/lib/             db, sessione, auth (Data Access Layer), formattazione
 src/components/      componenti UI condivisi (logo, navigazione)
-public/brand/        proposte di logo (SVG)
-docs/                specifica funzionale e roadmap
+public/brand/        logo ufficiale e varianti (vedi docs/brand/BRAND.md)
+docs/                specifica funzionale, roadmap, identità visiva
 deploy/              Caddyfile, script di backup
 ```
 

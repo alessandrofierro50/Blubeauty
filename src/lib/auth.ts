@@ -1,5 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { db } from "./db";
 import { getSession } from "./session";
 import type { Role } from "@/generated/prisma/enums";
@@ -18,6 +19,8 @@ export type CurrentUser = {
  * Ogni query di business deve filtrare per `organizationId` restituito da qui.
  */
 export async function getCurrentUser(): Promise<CurrentUser> {
+  // Le pagine riservate dipendono dall'utente e dall'ora corrente: sempre per-richiesta.
+  await connection();
   const { userId, organizationId } = await getSession();
   if (!userId || !organizationId) redirect("/login");
 

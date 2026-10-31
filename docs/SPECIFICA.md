@@ -126,9 +126,12 @@ Legenda stato: ✅ fatto nello scaffold · 🔜 MVP · 🕒 fase successiva
 | **4 — Magazzino, personale, marketing, report** | Moduli gestionali avanzati | Versione commerciale |
 | **5 — Fatturazione SDI, POS, multi-sede, AI** | Integrazioni | Catene e crescita |
 
-## 7. Decisioni aperte
+## 7. Decisioni prese
 
-- Logo definitivo (proposte in `public/brand/`).
+- Logo: monogramma "bb" a farfalla — vedi `docs/brand/BRAND.md`.
+
+## 8. Decisioni aperte
+
 - Fornitore WhatsApp Business API (Meta Cloud API diretta o BSP italiano).
 - Modelli di RT da supportare per primi (in base ai saloni pilota).
 - Modello di prezzo (abbonamento per sede / per operatore).
