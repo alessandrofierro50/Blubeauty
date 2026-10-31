@@ -8,6 +8,11 @@ import httpx
 from sqlalchemy import text
 
 from app.agenda import service as agenda_svc
+
+
+def today() -> date:
+    """Data italiana (il programma ragiona in Europe/Rome; a mezzanotte UTC è già il giorno dopo)."""
+    return datetime.now(agenda_svc.TZ).date()
 from app.marketing import service as msg
 from tests.conftest import activate_and_login, make_tenant
 from tests.test_periferiche import device, done, jobs, pair_agent
@@ -251,7 +256,7 @@ def test_campagne_solo_con_consenso(client, admin_headers):
     _, h = salon(client, admin_headers)
     client_(client, h, "Laura", "Esposito", "333 1111111", marketing=True)
     client_(client, h, "Elena", "Mancini", "333 8888888", marketing=False)
-    client_(client, h, "Sofia", "Costa", "333 9999999", marketing=True, birth_date=date(1990, date.today().month, 14).isoformat())
+    client_(client, h, "Sofia", "Costa", "333 9999999", marketing=True, birth_date=date(1990, today().month, 14).isoformat())
     seg = {x["code"]: x["count"] for x in client.get(f"{MK}/segmenti", headers=h).json()}
     assert seg["tutti"] == 2 and seg["compleanno_mese"] == 1 and seg["inattivi_60"] == 2
     r = client.post(f"{MK}/campagne", headers=h, json={"name": "Promo", "segment": "tutti",
@@ -270,7 +275,7 @@ def test_campagne_solo_con_consenso(client, admin_headers):
 def test_promemoria_e_automatici_una_volta_sola(client, admin_headers, owner_db):
     t, h = salon(client, admin_headers)
     c = catalog(client, h)
-    laura = client_(client, h, birth_date=date(1990, date.today().month, date.today().day).isoformat())
+    laura = client_(client, h, birth_date=date(1990, today().month, today().day).isoformat())
     a = book(client, h, laura, c["piega"], "10:00").json()
     soon = datetime.now(agenda_svc.TZ) + timedelta(hours=20)
     owner_db.execute(text("UPDATE agenda_appointments SET starts_at = :s, created_at = :c WHERE id = :i"),
@@ -279,12 +284,12 @@ def test_promemoria_e_automatici_una_volta_sola(client, admin_headers, owner_db)
     from app.core.db import new_session
     from app.marketing import jobs as mj
     for _ in range(2):  # due giri del job: un solo promemoria
-        r = mj.run_reminders(new_session, date.today())
+        r = mj.run_reminders(new_session, today())
     assert r == {} or r.get(t["id"]) in (None, 0)
     kinds = [m["kind"] for m in client.get(f"{AG}/clienti/{laura['id']}", headers=h).json()["messages"]]
     assert kinds.count("promemoria") == 1
     for _ in range(2):
-        mj.run_daily_marketing(new_session, date.today())
+        mj.run_daily_marketing(new_session, today())
     kinds = [m["kind"] for m in client.get(f"{AG}/clienti/{laura['id']}", headers=h).json()["messages"]]
     assert kinds.count("compleanno") == 1
 

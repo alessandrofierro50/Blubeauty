@@ -327,17 +327,19 @@ def close_fiscal_day(db: Session, reg: PosRegister, s: PosSession, user_id=None)
 
 
 def text_receipt(d: Document, company, pays: list[PosPayment], register_name: str = "") -> dict:
-    """Ricevuta di cortesia per la stampante termica (formato neutro dell'agent)."""
+    """Ricevuta (copia) di cortesia nel formato neutro dell'agent: `print.text` sulla termica o `rt.nonfiscal` sul
+    registratore. Sul registratore l'intestazione si salta (`rt_skip`: la stampa lui) e in fondo c'è la dicitura di
+    BluOrderScan «NON VALIDO COME DOC. COMMERCIALE»."""
     L = []
     if company:
-        L += [{"text": company.name, "align": "center", "bold": True, "size": 2},
-              {"text": " ".join(x for x in [company.address, company.zip_code, company.city] if x), "align": "center"}]
+        L += [{"text": company.name, "align": "center", "bold": True, "size": 2, "rt_skip": True},
+              {"text": " ".join(x for x in [company.address, company.zip_code, company.city] if x), "align": "center", "rt_skip": True}]
         if company.vat_number:
-            L.append({"text": f"P.IVA {company.vat_number}", "align": "center"})
-    title = {"SCO": "RICEVUTA DI CORTESIA", "RSO": "DOCUMENTO DI RESO", "FTI": f"FATTURA N. {d.number}/{d.year}"}.get(d.doc_type, d.doc_type)
-    L += [{"type": "line"}, {"text": title, "align": "center", "bold": True}]
+            L.append({"text": f"P.IVA {company.vat_number}", "align": "center", "rt_skip": True})
+    title = {"SCO": "COPIA DI CORTESIA", "RSO": "DOCUMENTO DI RESO", "FTI": f"FATTURA N. {d.number}/{d.year}"}.get(d.doc_type, d.doc_type)
+    L += [{"type": "line", "rt_skip": True}, {"text": title, "align": "center", "bold": True}]
     if d.doc_type == "SCO":
-        L.append({"text": "non valida ai fini fiscali", "align": "center"})
+        L.append({"text": "non valida ai fini fiscali", "align": "center", "rt_skip": True})
     L.append({"type": "line"})
     for ln in sorted(d.lines, key=lambda x: x.line_no):
         amount = docs.gross_amount(ln) if d.prices_vat_included else _d(ln.line_total)
@@ -357,8 +359,10 @@ def text_receipt(d: Document, company, pays: list[PosPayment], register_name: st
         L.append({"text": f"Documento commerciale {rt.get('z')}-{rt.get('number')}", "align": "center"})
     L.append({"text": f"{register_name} n. {d.number}  {d.doc_date.strftime('%d/%m/%Y')}", "align": "center"})
     if d.number:
-        L.append({"type": "barcode", "data": f"S{d.year % 100:02d}{d.number:07d}", "align": "center"})
-    L += [{"text": "Grazie e arrivederci", "align": "center"}, {"type": "cut"}]
+        L.append({"type": "barcode", "data": f"S{d.year % 100:02d}{d.number:07d}", "align": "center", "rt_skip": True})
+    L += [{"text": "Grazie e arrivederci", "align": "center"},
+          {"text": "NON VALIDO COME DOC. COMMERCIALE", "align": "center", "rt_text": "NON VALIDO COME DOC. COMMERCIALE", "rt_only": True},
+          {"type": "cut"}]
     return {"lines": L}
 
 

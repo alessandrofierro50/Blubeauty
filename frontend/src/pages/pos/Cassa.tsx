@@ -130,6 +130,13 @@ function Register({ id }: { id: string }) {
     return () => { clearInterval(t); window.removeEventListener('online', on) }
   }, [flush])
 
+  // copia di cortesia NON fiscale sul registratore telematico (come BluOrderScan: comandi Custom 4001/4003/4004)
+  function courtesyOnRt(doc: any) {
+    if (!doc?.id || doc.offline) { notifications.show({ color: 'orange', message: 'Lo scontrino non è ancora arrivato al gestionale: riprova tra poco' }); return }
+    P(`/scontrini/${doc.id}/stampa`, { body: { where: 'registratore' } })
+      .then(() => notifications.show({ message: 'Copia di cortesia inviata al registratore' })).catch(notifyError)
+  }
+
   function print(kind: 'receipt' | 'session', data: any) {
     if (kind === 'receipt' && periph?.devices?.printer && data?.id && !data.offline) {  // stampante termica della cassa
       P(`/scontrini/${data.id}/stampa`, { method: 'POST' }).then(() => notifications.show({ message: 'Ricevuta inviata alla stampante' })).catch(notifyError)
@@ -152,7 +159,7 @@ function Register({ id }: { id: string }) {
       {!session
         ? <OpenScreen reg={reg} me={me} onOpen={setSession} onExit={() => nav('/')} />
         : <Till reg={reg} cat={cat} me={me} session={session} setSession={setSession} online={online} setOnline={setOnline}
-            outbox={outbox} setOutbox={setOutbox} flush={flush} reloadCatalog={loadCatalog} print={print} periph={periph} />}
+            outbox={outbox} setOutbox={setOutbox} flush={flush} reloadCatalog={loadCatalog} print={print} courtesyOnRt={courtesyOnRt} periph={periph} />}
     </>
   )
 }
@@ -181,10 +188,11 @@ function OpenScreen({ reg, me, onOpen, onExit }: { reg: any; me: any; onOpen: (s
 
 // =====================================================================================================================
 
-function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, setOutbox, flush, reloadCatalog, print, periph }: {
+function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, setOutbox, flush, reloadCatalog, print, courtesyOnRt, periph }: {
   reg: any; cat: Catalog; me: any; session: any; setSession: (s: any) => void; online: boolean; setOnline: (b: boolean) => void
   outbox: Pending[]; setOutbox: (p: Pending[]) => void; flush: () => void; reloadCatalog: () => void; print: (k: 'receipt' | 'session', d: any) => void
   periph: Periph
+  courtesyOnRt: (doc: any) => void
 }) {
   const nav = useNavigate()
   const market = reg.mode === 'supermercato'
@@ -352,6 +360,18 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
     setPrompt({ title: selected.description, label: 'Prezzo unitario (IVA inclusa)', initial: selected.price.toFixed(2).replace('.', ','), onOk: (v) => { const n = parseAmount(v, false); if (n >= 0) update(selected.key, { price: n }) } })
   }
 
+  // copia di cortesia dell'ultimo scontrino (quello appena fatto o l'ultimo della sessione)
+  const hasRt = !!periph?.devices?.rt
+  async function courtesyCopy() {
+    if (last && !last.offline) return courtesyOnRt(last)
+    try {
+      const rows = await P(`/scontrini?session_id=${session.id}&limit=5`)
+      const doc = rows.find((r: any) => r.doc_type === 'SCO')
+      if (!doc) { notifications.show({ color: 'orange', message: 'Nessuno scontrino in questa apertura di cassa' }); return }
+      courtesyOnRt(doc)
+    } catch (e) { notifyError(e) }
+  }
+
   // tasti funzione (validi anche col cursore fuori dal campo codice)
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -360,7 +380,7 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
       const map: Record<string, () => void> = {
         F2: () => setModal('search'), F3: () => setModal('customer'), F4: askDiscount, F5: askQty, F6: () => setModal('returns'),
         F7: askPrice, F8: () => remove(selected?.key), F9: () => lines.length && setPrompt({ title: 'Annulla scontrino', label: 'Scrivi SI per svuotare lo scontrino in corso', onOk: (v) => { if (v.trim().toUpperCase() === 'SI') clearCart() } }),
-        F10: () => setModal('move'), F12: () => lines.length && setModal('pay'),
+        F10: () => setModal('move'), F12: () => lines.length && setModal('pay'), ...(hasRt ? { F1: courtesyCopy } : {}),
       }
       if (map[k]) { e.preventDefault(); map[k](); return }
       if (market && document.activeElement !== inputRef.current && k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) inputRef.current?.focus()
@@ -461,6 +481,8 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
         <Group gap={4} wrap="nowrap">
           <Tooltip label="Apri il display per il cliente (trascinalo sul secondo schermo)"><Button size="xs" variant="subtle" color="white" leftSection={<IconDeviceDesktop size={16} />}
             onClick={() => window.open(`/cassa/${reg.id}/display`, `display-${reg.id}`, 'popup,width=1024,height=600')}>Display</Button></Tooltip>
+          {hasRt && <Tooltip label="Stampa sul registratore la copia non fiscale dell'ultimo scontrino"><Button size="xs" variant="subtle" color="white"
+            leftSection={<IconPrinter size={16} />} onClick={courtesyCopy}>Copia cortesia <Kbd ml={4} size="xs">F1</Kbd></Button></Tooltip>}
           <Button size="xs" variant="subtle" color="white" leftSection={<IconReceipt size={16} />} onClick={() => setModal('receipts')}>Scontrini</Button>
           <Button size="xs" variant="subtle" color="white" leftSection={<IconCash size={16} />} onClick={() => setModal('move')}>Prelievi <Kbd ml={4} size="xs">F10</Kbd></Button>
           <Button size="xs" variant="subtle" color="white" leftSection={<IconLock size={16} />} onClick={() => setModal('close')}>Chiusura</Button>
@@ -509,7 +531,7 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
             </Table>
             {!lines.length && (
               <Center h={240}>
-                {last ? <LastSale last={last} onPrint={() => print('receipt', last)} onRetry={() => retryFiscal()} /> : <Text c="dimmed">{market ? 'Passa i prodotti col lettore o digita il codice' : 'Tocca un prodotto o leggi il codice a barre'}</Text>}
+                {last ? <LastSale last={last} onPrint={() => print('receipt', last)} onRt={hasRt ? () => courtesyOnRt(last) : undefined} onRetry={() => retryFiscal()} /> : <Text c="dimmed">{market ? 'Passa i prodotti col lettore o digita il codice' : 'Tocca un prodotto o leggi il codice a barre'}</Text>}
               </Center>
             )}
           </ScrollArea>
@@ -594,7 +616,7 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
         onPick={(c, inv) => { setCustomer(c); setInvoice(inv); setModal(null) }} />}
       {modal === 'returns' && <ReturnsModal reg={reg} session={session} online={online} onClose={() => setModal(null)}
         onFree={() => { setRefundMode(true); setModal(null) }} onDone={(r) => { setLast(r); setModal(null); if (reg.settings?.auto_print) print('receipt', r) }} />}
-      {modal === 'receipts' && <ReceiptsModal reg={reg} session={session} onClose={() => setModal(null)} onPrint={(r) => print('receipt', r)} />}
+      {modal === 'receipts' && <ReceiptsModal reg={reg} session={session} onClose={() => setModal(null)} onPrint={(r) => print('receipt', r)} onRt={hasRt ? courtesyOnRt : undefined} />}
       {modal === 'move' && <MoveModal session={session} onClose={() => setModal(null)} onDone={(s) => { setSession(s); setModal(null) }} />}
       {modal === 'close' && <CloseModal session={session} pending={outbox.length} onClose={() => setModal(null)} onPrint={(s) => print('session', s)}
         onClosed={(s) => { print('session', s); setTimeout(() => setSession(null), 600) }} />}
@@ -628,14 +650,19 @@ function FiscalBadge({ rt, onRetry }: { rt: any; onRetry?: () => void }) {
   )
 }
 
-function LastSale({ last, onPrint, onRetry }: { last: any; onPrint: () => void; onRetry: () => void }) {
+function LastSale({ last, onPrint, onRt, onRetry }: { last: any; onPrint: () => void; onRt?: () => void; onRetry: () => void }) {
   return (
     <Stack align="center" gap={4}>
       <Text c="dimmed">{last.offline ? 'Ultimo scontrino (in attesa di invio)' : last.doc_type === 'RSO' ? `Reso n. ${last.number} registrato` : last.doc_type === 'FTI' ? `Fattura n. ${last.number}/${last.year} emessa` : `Scontrino n. ${last.number} registrato`}</Text>
       <Text fw={700} size="xl">Totale {euro(toCents(last.total))}</Text>
       {Number(last.change) > 0 && <Text fw={800} c="green.8" style={{ fontSize: 44 }}>Resto {euro(toCents(last.change))}</Text>}
       <FiscalBadge rt={last.fiscal?.rt} onRetry={last.offline ? undefined : onRetry} />
-      {!last.offline && <Button variant="light" leftSection={<IconPrinter size={16} />} onClick={onPrint} mt="sm">Stampa ricevuta di cortesia</Button>}
+      {!last.offline && (
+        <Group mt="sm" gap="xs">
+          {onRt && last.doc_type === 'SCO' && <Button leftSection={<IconPrinter size={16} />} onClick={onRt}>Copia di cortesia sul registratore</Button>}
+          <Button variant="light" leftSection={<IconPrinter size={16} />} onClick={onPrint}>{onRt ? 'Su stampante/PC' : 'Stampa ricevuta di cortesia'}</Button>
+        </Group>
+      )}
     </Stack>
   )
 }
@@ -948,7 +975,7 @@ function ReturnsModal({ reg, session, online, onClose, onFree, onDone }: { reg: 
   )
 }
 
-function ReceiptsModal({ reg, session, onClose, onPrint }: { reg: any; session: any; onClose: () => void; onPrint: (r: any) => void }) {
+function ReceiptsModal({ reg, session, onClose, onPrint, onRt }: { reg: any; session: any; onClose: () => void; onPrint: (r: any) => void; onRt?: (r: any) => void }) {
   const [rows, setRows] = useState<any[] | null>(null)
   const [doc, setDoc] = useState<any>(null)
   useEffect(() => { P(`/scontrini?session_id=${session.id}&limit=200`).then(setRows).catch(notifyError) }, [])
@@ -975,7 +1002,8 @@ function ReceiptsModal({ reg, session, onClose, onPrint }: { reg: any; session: 
             {doc ? (
               <>
                 <div style={{ maxHeight: 400, overflow: 'auto' }}><ReceiptPrint r={doc} company={null} register={reg.name} /></div>
-                <Button fullWidth mt="sm" variant="light" leftSection={<IconPrinter size={16} />} onClick={() => onPrint(doc)}>Ristampa cortesia</Button>
+                {onRt && doc.doc_type === 'SCO' && <Button fullWidth mt="sm" leftSection={<IconPrinter size={16} />} onClick={() => onRt(doc)}>Copia di cortesia sul registratore</Button>}
+                <Button fullWidth mt="sm" variant="light" leftSection={<IconPrinter size={16} />} onClick={() => onPrint(doc)}>{onRt ? 'Ristampa cortesia (stampante/PC)' : 'Ristampa cortesia'}</Button>
               </>
             ) : <Text c="dimmed" size="sm">Scegli un documento per vederlo e ristamparlo</Text>}
           </Paper>

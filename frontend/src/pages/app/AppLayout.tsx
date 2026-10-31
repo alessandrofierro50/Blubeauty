@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { ApiError, appApi, tokens } from '../../api'
-import { Loading, Logo, PlanBadge } from '../../components'
+import { HEADER_ACTION_ID, Loading, Logo, PlanBadge } from '../../components'
 import { ChangePassword, ForcedChange } from './Passwords'
 import Payment, { PaymentResult } from './Payment'
 import Subscription from './Subscription'
@@ -158,6 +158,7 @@ export default function AppLayout() {
             <Logo />
             <Text fw={600} visibleFrom="sm" truncate>{me.tenant.name}</Text>
             <PlanBadge code={status.plan_code} />
+            <div id={HEADER_ACTION_ID} style={{ display: 'flex', alignItems: 'center' }} />
           </Group>
           <Group gap="xs" wrap="nowrap">
             {me.impersonated && <Badge color="orange">Assistenza</Badge>}

@@ -1,6 +1,7 @@
 """API vendita al banco: /api/pos/...  (modulo "pos", pacchetto Plus)."""
 
 import uuid
+from typing import Literal
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
@@ -450,17 +451,30 @@ def retry_fiscal(doc_id: uuid.UUID, body: FiscalRetryIn, ctx: TenantContext = De
     return pos.receipt_out(ctx.db, d)
 
 
+class CourtesyIn(BaseModel):
+    where: Literal["termica", "registratore"] | None = None
+
+
 @router.post("/scontrini/{doc_id}/stampa")
-def print_courtesy(doc_id: uuid.UUID, ctx: TenantContext = Depends(cashier)):
-    """Ricevuta di cortesia sulla stampante termica della cassa."""
+def print_courtesy(doc_id: uuid.UUID, body: CourtesyIn | None = None, ctx: TenantContext = Depends(cashier)):
+    """Copia di cortesia (non fiscale) sulla stampante termica della cassa o sul registratore telematico
+    (`rt.nonfiscal`, comandi Custom 4001/4003/4004 come BluOrderScan). Senza scelta: termica se c'è, altrimenti registratore."""
     from app.core.models import Company
     from app.periferiche import service as per
     d = _get(ctx, Document, doc_id)
     reg = ctx.db.get(PosRegister, d.register_id) if d.register_id else None
-    dev = per.register_device(ctx.db, reg, "printer") if reg else None
+    where = body.where if body else None
+    printer = per.register_device(ctx.db, reg, "printer") if reg else None
+    rt = per.register_device(ctx.db, reg, "rt") if reg else None
+    if where is None:
+        where = "termica" if printer else "registratore"
+    dev = printer if where == "termica" else rt
     if dev is None:
-        raise HTTPException(422, "La cassa non ha una stampante di ricevute")
+        raise HTTPException(422, "La cassa non ha una stampante di ricevute" if where == "termica" else "La cassa non ha un registratore telematico")
     pays = list(ctx.db.scalars(select(PosPayment).where(PosPayment.document_id == d.id)))
     co = ctx.db.scalar(select(Company).order_by(Company.name))
-    j = per.enqueue(ctx.db, dev, "print.text", per.text_receipt(d, co, pays, reg.name), document_id=d.id, user_id=ctx.user.id)
-    return {"job_id": str(j.id)}
+    payload = per.text_receipt(d, co, pays, reg.name)
+    if where == "termica":  # la dicitura per il registratore non serve sulla termica
+        payload["lines"] = [x for x in payload["lines"] if not x.get("rt_only")]
+    j = per.enqueue(ctx.db, dev, "print.text" if where == "termica" else "rt.nonfiscal", payload, document_id=d.id, user_id=ctx.user.id)
+    return {"job_id": str(j.id), "where": where}

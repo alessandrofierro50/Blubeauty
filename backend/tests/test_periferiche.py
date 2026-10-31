@@ -112,6 +112,16 @@ def test_documento_commerciale_reso_e_chiusura(client, admin_headers):
     assert client.post(f"{P}/scontrini/{sco['id']}/stampa", headers=h).status_code == 200
     pj = jobs(client, ah)[0]
     assert pj["kind"] == "print.text" and any("0012-0007" in (x.get("text") or "") for x in pj["payload"]["lines"])
+    assert not any(x.get("rt_only") for x in pj["payload"]["lines"])
+    done(client, ah, pj)
+    # copia di cortesia NON fiscale sul registratore (come BluOrderScan): rt.nonfiscal, senza intestazione, con la dicitura
+    r = client.post(f"{P}/scontrini/{sco['id']}/stampa", headers=h, json={"where": "registratore"})
+    assert r.status_code == 200 and r.json()["where"] == "registratore"
+    cj = jobs(client, ah)[0]
+    assert cj["kind"] == "rt.nonfiscal"
+    texts = [x.get("rt_text") or x.get("text") for x in cj["payload"]["lines"] if not x.get("rt_skip") and x.get("text")]
+    assert "COPIA DI CORTESIA" in texts and texts[-1] == "NON VALIDO COME DOC. COMMERCIALE"
+    done(client, ah, cj)
     # senza rete: la cassa ha stampato tramite l'agent locale, il server registra l'esito senza nuovo lavoro
     off = sale(client, h, reg, [{"item_id": acqua["id"], "unit_price_gross": "0.40"}], [{"method": "contanti", "amount": "0.40"}],
                rt_result={"number": "0009", "z": "0012", "date": "2026-10-28"}).json()

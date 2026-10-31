@@ -1,6 +1,7 @@
 import { Badge, Center, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import { brand } from './brand'
 
@@ -9,8 +10,8 @@ export function Logo({ size = 32, withName = true }: { size?: number; withName?:
     <Group gap={10} wrap="nowrap">
       <img src={brand.logo} width={size} height={size} alt="" />
       {withName && (
-        <Text fw={800} size={size > 36 ? 'xl' : 'lg'} c={brand.colors.dark} style={{ letterSpacing: -0.3, fontFamily: 'Archivo, sans-serif' }}>
-          Blu<span style={{ color: brand.colors.primary, fontWeight: 400 }}>Beauty</span>
+        <Text fw={800} size={size > 36 ? 'xl' : 'lg'} c={`light-dark(${brand.colors.dark}, #FFFFFF)`} style={{ letterSpacing: -0.3, fontFamily: 'Archivo, sans-serif' }}>
+          Blu<span style={{ color: `light-dark(${brand.colors.primary}, #7FB2F0)`, fontWeight: 400 }}>Beauty</span>
         </Text>
       )}
     </Group>
@@ -78,4 +79,14 @@ export function notifyError(e: unknown) {
 
 export function notifyOk(message: string) {
   notifications.show({ color: 'green', message })
+}
+
+
+/** Posto nella barra in alto (accanto al pacchetto) dove una pagina può mettere il suo pulsante principale. */
+export const HEADER_ACTION_ID = 'header-action'
+
+export function HeaderAction({ children }: { children: ReactNode }) {
+  const [el, setEl] = useState<HTMLElement | null>(null)
+  useEffect(() => { setEl(document.getElementById(HEADER_ACTION_ID)) }, [])
+  return el ? createPortal(children, el) : null
 }

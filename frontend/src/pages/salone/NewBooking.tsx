@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { appApi, fmtEuro, isoDate } from '../../api'
-import { notifyError } from '../../components'
+import { HeaderAction, notifyError } from '../../components'
 import type { Service, Staff } from '../agenda/lib'
 
 const choice = { radius: 'lg' as const, p: 'md' as const, withBorder: true }
@@ -168,15 +168,23 @@ export default function NewBooking() {
             </SimpleGrid>
           )}
           {time && (
-            <Paper {...choice} p="lg" bg="var(--mantine-color-blu-0)">
-              <Group justify="space-between">
-                <div>
-                  <Text fz="xl" fw={700}>{clientName}</Text>
-                  <Text fz="lg">{service.name} · {new Date(day + 'T12:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} alle {time}</Text>
-                </div>
-                <Button size="xl" radius="xl" color="green" loading={busy} onClick={confirm} leftSection={<IconCheck />}>Conferma</Button>
-              </Group>
-            </Paper>
+            <>
+              {/* pulsante principale nella barra in alto, accanto al pacchetto: si vede sempre, anche senza scorrere */}
+              <HeaderAction>
+                <Button size="md" radius="xl" color="green" loading={busy} onClick={confirm} leftSection={<IconCheck size={20} />} data-testid="conferma-alto">
+                  Conferma {time}
+                </Button>
+              </HeaderAction>
+              <Paper {...choice} p="lg" bg="var(--mantine-color-blu-light)">
+                <Group justify="space-between">
+                  <div>
+                    <Text fz="xl" fw={700}>{clientName}</Text>
+                    <Text fz="lg">{service.name} · {new Date(day + 'T12:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} alle {time}</Text>
+                  </div>
+                  <Button size="xl" radius="xl" color="green" loading={busy} onClick={confirm} leftSection={<IconCheck />}>Conferma</Button>
+                </Group>
+              </Paper>
+            </>
           )}
         </Stack>
       )}

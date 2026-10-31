@@ -55,6 +55,11 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   una richiesta per comando, `resetPrinter` se un comando è rifiutato; righe ASCII da 32 caratteri (rotolo 57 mm, opzione
   `width`), senza intestazione (`rt_skip`: la stampa il registratore), in fondo «NON VALIDO COME DOC. COMMERCIALE».
   Epson: printerNonFiscal di fpmate, non ancora collaudato.
+- Cassa (`/cassa`): «Copia cortesia» (F1, nella barra in alto, dopo la vendita e in «Scontrini») = copia NON fiscale
+  dell'ultimo scontrino sul registratore: `POST /api/pos/scontrini/{id}/stampa` con `where: registratore` → `rt.nonfiscal`
+  da `periferiche.service.text_receipt` (intestazione `rt_skip`, riga `rt_only` «NON VALIDO COME DOC. COMMERCIALE»).
+- Barra in alto: `<HeaderAction>` (components.tsx) mette il pulsante principale di una pagina accanto al pacchetto
+  (es. «Conferma 09:30» nel nuovo appuntamento).
 - Frontend: modalità semplice predefinita (`localStorage blubeauty_semplice`) in `AppLayout`; pagine `src/pages/salone/`
   (Oggi, nuovo appuntamento a passi, incasso semplice `Pay.tsx`, stampe 80 mm e tessera `Prints.tsx`).
 - Ricerca sul marketing dei concorrenti: `docs/MARKETING-CONCORRENTI.md`.
