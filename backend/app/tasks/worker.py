@@ -27,6 +27,9 @@ celery_app.conf.beat_schedule = {
     "sdi-aggiornamento": {"task": "app.tasks.worker.einvoice_poll", "schedule": crontab(minute="4,24,44")},
     # Report programmati del report builder (pacchetto Pro): ogni mattina alle 7:41.
     "report-programmati": {"task": "app.tasks.worker.scheduled_reports", "schedule": crontab(hour=7, minute=41)},
+    # BluBeauty: promemoria degli appuntamenti ogni ora (al minuto 11), marketing automatico ogni mattina alle 9:37.
+    "promemoria-appuntamenti": {"task": "app.tasks.worker.appointment_reminders", "schedule": crontab(minute=11)},
+    "marketing-automatico": {"task": "app.tasks.worker.daily_marketing", "schedule": crontab(hour=9, minute=37)},
     "riepilogo-settimanale": {
         "task": "app.tasks.worker.weekly_admin_summary",
         "schedule": crontab(hour=8, minute=17, day_of_week=1),
@@ -80,3 +83,15 @@ def einvoice_poll():
 def scheduled_reports():
     from app.bi.reports import run_scheduled
     return run_scheduled(new_session, today())
+
+
+@celery_app.task
+def appointment_reminders():
+    from app.marketing.jobs import run_reminders
+    return run_reminders(new_session, today())
+
+
+@celery_app.task
+def daily_marketing():
+    from app.marketing.jobs import run_daily_marketing
+    return run_daily_marketing(new_session, today())

@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.agenda.public_router import router as prenota_router
+from app.agenda.router import router as agenda_router
 from app.anagrafiche.router import router as anagrafiche_router
+from app.marketing.router import router as marketing_router
 from app.auth.router import router as auth_router
 from app.core.config import get_settings
 from app.core.media import router as media_router
@@ -43,6 +46,9 @@ app.include_router(admin_router)
 app.include_router(public_router)
 app.include_router(console_router)
 app.include_router(app_router)
+app.include_router(agenda_router)
+app.include_router(prenota_router)
+app.include_router(marketing_router)
 app.include_router(anagrafiche_router)
 app.include_router(media_router)
 app.include_router(magazzino_router)

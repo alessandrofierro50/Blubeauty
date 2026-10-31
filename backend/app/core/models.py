@@ -282,6 +282,11 @@ TENANT_TABLES += [
     "saved_reports", "dashboards",
     "vans", "van_route_stops", "van_trips", "van_counts", "van_collections",
     "payments",
+    # BluBeauty: agenda e marketing
+    "agenda_settings", "agenda_staff", "agenda_resources", "agenda_service_categories", "agenda_services",
+    "agenda_service_staff", "agenda_service_resources", "agenda_client_profiles", "agenda_technical_cards",
+    "agenda_appointments", "agenda_appointment_items",
+    "marketing_settings", "messages", "automations", "campaigns",
 ]
 
 from app.anagrafiche import models as _anagrafiche_models  # noqa: E402,F401  (registra i modelli)
@@ -294,3 +299,5 @@ from app.periferiche import models as _periferiche_models  # noqa: E402,F401
 from app.bi import models as _bi_models  # noqa: E402,F401
 from app.tentata import models as _tentata_models  # noqa: E402,F401
 from app.pagamenti import models as _pagamenti_models  # noqa: E402,F401
+from app.agenda import models as _agenda_models  # noqa: E402,F401
+from app.marketing import models as _marketing_models  # noqa: E402,F401
