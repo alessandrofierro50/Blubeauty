@@ -310,102 +310,375 @@ EPSON_ERRORS = {"EPTR_REC_EMPTY": "carta finita", "EPTR_COVER_OPEN": "coperchio 
                 "PRINTER ERROR": "errore della stampante", "LAN_TIME_OUT": "tempo scaduto"}
 
 
-class CustomRT:
-    """Custom (Q3X, KUBE II F…): protocollo XML via HTTP su /xml/printer.htm, importi in centesimi."""
+class RtNotSent(DeviceError):
+    """Il registratore non ha eseguito nulla (rifiuto, non raggiungibile, password): si può riprovare senza doppioni."""
 
+
+class RtNoAnswer(DeviceError):
+    """La richiesta è partita ma la risposta non è arrivata: esito da verificare sul registratore, mai ristampare alla cieca."""
+
+
+def rt_describe(code) -> str:
+    try:
+        import rt_errors  # tabella dei codici del manuale Custom (file accanto all'agent)
+        return rt_errors.describe(code)
+    except Exception:  # noqa: BLE001
+        return f"errore {code}"
+
+
+def rt_parse(text: str) -> dict:
+    """Risposta XML del registratore Custom: esito, codice d'errore, numeri del documento, lastIdCmd, stato della carta."""
+    out: dict = {"ok": False, "status": None}
+    try:
+        root = ET.fromstring((text or "").strip().encode("utf-8"))
+    except ET.ParseError as e:
+        out["message"] = f"Risposta non leggibile: {e}"
+        return out
+    attrs = {k.lower(): v for k, v in root.attrib.items()}
+    out["ok"] = str(attrs.get("success", "")).strip().lower() == "true"
+    try:
+        out["status"] = int(str(attrs.get("status", "0")).strip() or 0)
+    except ValueError:
+        pass
+    names = {"fiscaldoc": "fiscal_number", "nclose": "z_number", "datetime": "date_time", "fpstatus": "fp_status",
+             "responsebuf": "response_buf", "cpurel": "model", "mfstatus": "mf_status", "printerstatus": "printer_status"}
+    for el in root.iter():
+        t, v = child_tag(el).lower(), (el.text or "").strip()
+        if t == "lastidcmd":
+            out["last_idcmd"] = (el.attrib.get("IdCmd") or el.attrib.get("idcmd") or v or "").strip() or None
+        elif t in names and v:
+            out[names[t]] = v
+    ps = out.get("printer_status") or ""
+    if re.fullmatch(r"[01]{5}", ps):
+        out["problems"] = [m for i, m in ((0, "coperchio aperto"), (1, "carta finita"), (2, "carta in esaurimento"),
+                                          (3, "giornale elettronico pieno")) if ps[i] == "1"]
+    if not out["ok"] and not out.get("message"):
+        out["message"] = f"Registratore: {rt_describe(out['status'])}" if out["status"] else "Il registratore ha rifiutato il comando"
+    return out
+
+
+def _digest(user: str, password: str, challenge: str, method: str, uri: str) -> str:
+    import hashlib
+    f = dict(re.findall(r'(\w+)="?([^",]*)"?', challenge))
+    algo = f.get("algorithm", "MD5").upper()
+    h = (lambda x: hashlib.sha256(x.encode()).hexdigest()) if algo.startswith("SHA-256") else (lambda x: hashlib.md5(x.encode()).hexdigest())
+    ha1, ha2 = h(f"{user}:{f.get('realm', '')}:{password}"), h(f"{method}:{uri}")
+    cnonce, nc = os.urandom(8).hex(), "00000001"
+    if "auth" in f.get("qop", "").split(","):
+        resp, extra = h(f"{ha1}:{f.get('nonce', '')}:{nc}:{cnonce}:auth:{ha2}"), f', qop=auth, nc={nc}, cnonce="{cnonce}"'
+    else:
+        resp, extra = h(f"{ha1}:{f.get('nonce', '')}:{ha2}"), ""
+    opaque = f', opaque="{f["opaque"]}"' if "opaque" in f else ""
+    return (f'Digest username="{user}", realm="{f.get("realm", "")}", nonce="{f.get("nonce", "")}", uri="{uri}", '
+            f'algorithm={f.get("algorithm", "MD5")}, response="{resp}"{opaque}{extra}')
+
+
+def custom_http(host: str, port: int, body: str, auth: tuple | None, timeout: int) -> str:
+    """POST /xml/printer.htm come il ponte di BluOrderScan (collaudato sul KUBE II-F): text/plain, autenticazione Basic o
+    Digest, connessione ritentata 3 volte (subito dopo una stampa il registratore rifiuta connessioni per qualche secondo)."""
+    import base64
+    import http.client
+    header = "Basic " + base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode() if auth else None
+    for attempt in range(2):
+        for n in range(CustomRT.CONNECT_TRIES):
+            conn = http.client.HTTPConnection(host, port, timeout=8)
+            try:
+                conn.connect()
+                break
+            except OSError as e:
+                conn.close()
+                if n == CustomRT.CONNECT_TRIES - 1:
+                    raise RtNotSent(f"Registratore {host}:{port} non raggiungibile ({e.__class__.__name__}: {e})") from None
+                time.sleep(CustomRT.CONNECT_PAUSE)
+        try:
+            conn.sock.settimeout(timeout)
+            data = body.encode("utf-8")
+            headers = {"Content-Type": "text/plain; charset=utf-8", "Content-Length": str(len(data))}
+            if header:
+                headers["Authorization"] = header
+            conn.request("POST", CustomRT.PATH, body=data, headers=headers)
+            r = conn.getresponse()
+            text = r.read().decode("utf-8", "replace")
+            if r.status == 401:  # rifiutata senza eseguirla: si può riprovare senza doppioni
+                challenge = r.getheader("WWW-Authenticate") or ""
+                if auth and attempt == 0 and challenge.lower().startswith("digest"):
+                    header = _digest(auth[0], auth[1], challenge, "POST", CustomRT.PATH)
+                    continue
+                raise RtNotSent("Il registratore chiede utente e password (HTTP 401): " +
+                                ("utente o password non corretti" if auth else "scrivili nelle impostazioni del dispositivo"))
+            if r.status != 200:
+                raise RtNoAnswer(f"Risposta HTTP {r.status} dal registratore")
+            return text
+        except (OSError, http.client.HTTPException) as e:
+            raise RtNoAnswer(f"Risposta non ricevuta ({e.__class__.__name__}: {e})") from None
+        finally:
+            conn.close()
+    raise RtNotSent("Il registratore chiede utente e password (HTTP 401): utente o password non corretti")
+
+
+class CustomRT:
+    """Custom (KUBE II-F, Q3X…): protocollo XML via HTTP su /xml/printer.htm, importi in centesimi.
+
+    Tutto come il ponte di BluOrderScan e il gestionale macellerie, dove il primo scontrino reale è uscito dopo diverse
+    prove sul KUBE II-F (repository Ordini-scan: backend/rt_custom.py e backend/ponte/sof_bridge.py):
+    - scontrino = UN solo XML; printRecItem con unitPrice = importo della RIGA (quantità × prezzo, già scontato), IdVat =
+      indice IVA del registratore; la quantità va in un printRecMessage «2 x 15,00 EUR»; printRecSubtotal; printRecTotal
+      con il contante RICEVUTO (il resto lo calcola il registratore); endFiscalReceiptCut con IdCmd univoco;
+    - descrizioni senza accenti, max 22 caratteri; gli sconti finiscono nelle righe (nessun comando di sconto separato);
+    - comando rifiutato → resetPrinter (altrimenti il documento rimasto aperto blocca tutto);
+    - risposta persa → si chiede lastIdCmd al registratore (2, 4, 8 secondi): mai una ristampa alla cieca;
+    - chiusura Z come l'esempio del manuale (senza IdCmd), attesa di 300 s, poi 20 s di pausa e resetPrinter (il KUBE
+      apre da solo il promemoria «VISITA TECNICA» che blocca i documenti successivi).
+    """
+
+    PATH = "/xml/printer.htm"
+    DESC, MSG = 22, 42
     PAYMENTS = {"contanti": 1, "carta": 2, "bancomat": 2, "satispay": 2, "buono_pasto": 3, "buono": 2, "altro": 2}
-    VAT_INDEX = {"22": 1, "10": 2, "4": 3, "5": 4}
-    DESC = 22
+    TIMEOUT, REPORT_TIMEOUT = 120, 300       # risponde a stampa finita; la Z trasmette anche all'Agenzia delle Entrate
+    CONNECT_TRIES, CONNECT_PAUSE = 3, 4
+    VERIFY_WAITS = (2, 4, 8)
+    VAT_SLOTS = 10
+    _vat_cache: dict[str, list[dict]] = {}
 
     def __init__(self, address: str, options: dict, http=None):
-        self.address = address if address.startswith("http") else f"http://{address}"
+        a = address if address.startswith("http") else f"http://{address}"
+        hostport = a.split("://", 1)[1].split("/", 1)[0]
+        self.host, _, port = hostport.partition(":")
+        self.port = int(port or 80)
+        self.address = f"http://{hostport}"
         self.options = options or {}
-        self.http = http or http_post
+        self.http = http  # solo per le prove: http(url, dati, intestazioni, timeout) -> bytes
+        self.after_z_pause = float(self.options.get("after_z_pause", 20))
 
+    # ------------------------------------------------------------------------------------------------ trasporto
+    def request(self, body: str, timeout: int | None = None) -> dict:
+        timeout = timeout or self.TIMEOUT
+        user = self.options.get("username") or self.options.get("rt_user")
+        auth = (user, self.options.get("password") or self.options.get("rt_password") or "") if user else None
+        if self.http is None:
+            return rt_parse(custom_http(self.host, self.port, body, auth, timeout))
+        headers = {"Content-Type": "text/plain; charset=utf-8"}
+        if auth:
+            import base64
+            headers["Authorization"] = "Basic " + base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
+        raw = self.http(f"{self.address}{self.PATH}", body.encode("utf-8"), headers, timeout)
+        return rt_parse(raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw)
+
+    def send(self, body: str, timeout: int | None = None) -> dict:
+        """Comando di servizio: errore se rifiutato."""
+        st = self.request(body, timeout)
+        if not st["ok"]:
+            raise RtNotSent(st["message"])
+        return st
+
+    def reset(self, why: str) -> None:
+        """Annulla la transazione rimasta aperta (resetPrinter, come «annulla» dalla tastiera): un documento aperto non è emesso."""
+        try:
+            log(f"Custom RT: annullo della transazione eventualmente aperta ({why})")
+            self.request(self.command("resetPrinter"), timeout=15)
+        except DeviceError as e:
+            log(f"Custom RT: annullo della transazione aperta non riuscito: {e}")
+
+    def verify(self, my_id: str, why: str) -> dict:
+        for wait in self.VERIFY_WAITS:
+            time.sleep(wait)
+            try:
+                st = self.request(self.command("queryPrinterStatus"), timeout=10)
+            except DeviceError:
+                continue
+            if st.get("last_idcmd") == my_id:
+                log("Custom RT: risposta persa ma documento eseguito (lastIdCmd): registro l'esito senza ristampare")
+                return {**st, "already_done": True}
+            if st.get("fp_status") in ("000", None, ""):
+                raise RtNotSent(f"{why}. Verificato sul registratore: documento NON emesso, si può riprovare")
+        raise RtNoAnswer(f"{why}. Controlla sul registratore se il documento è uscito prima di riprovare")
+
+    # ------------------------------------------------------------------------------------------------ XML
     @staticmethod
     def cents(v) -> int:
         return int((money(v) * 100).to_integral_value(ROUND_HALF_UP))
 
-    def desc(self, s) -> str:
-        return (s or "").replace("\n", " ")[: self.DESC]
+    @staticmethod
+    def eur(cents: int) -> str:
+        return f"{cents / 100:.2f}".replace(".", ",")
+
+    @staticmethod
+    def tag(name: str, **attrs) -> str:
+        a = "".join(f" {k}={quoteattr(str(v))}" for k, v in attrs.items() if v is not None)
+        return f"<{name}{a}></{name}>"
+
+    @staticmethod
+    def doc(root: str, body: list[str]) -> str:
+        return '<?xml version="1.0" encoding="utf-8"?>\n' + f"<{root}>\n" + "".join(f" {x}\n" for x in body) + f"</{root}>\n"
+
+    def command(self, name: str, **attrs) -> str:
+        return self.doc("printerCommand", [self.tag(name, **attrs)])
+
+    @staticmethod
+    def idcmd(ref: str, suffix: str = "E") -> str:
+        """Identificativo del comando (max 36 caratteri alfanumerici), sempre uguale per lo stesso documento."""
+        return re.sub(r"[^A-Za-z0-9]", "", ref or uuid.uuid4().hex)[:34] + suffix
+
+    def vat_table(self, refresh: bool = False) -> list[dict]:
+        """Aliquote programmate nel registratore (getVatRate 1…10): indice a 2 cifre + aliquota a 4 cifre (centesimi)."""
+        key = f"{self.host}:{self.port}"
+        if refresh or key not in self._vat_cache:
+            table = []
+            for n in range(1, self.VAT_SLOTS + 1):
+                st = self.request(self.command("getVatRate", numVat=n), timeout=15)
+                b = (st.get("response_buf") or "").rstrip("\r\n")
+                if st["ok"] and len(b) >= 6 and b[:6].isdigit() and int(b[2:6]):
+                    table.append({"index": int(b[:2]), "rate": str(Decimal(int(b[2:6])) / 100), "description": b[8:33].strip()})
+            self._vat_cache[key] = table
+        return self._vat_cache[key]
 
     def id_vat(self, line) -> int:
-        idx = {**self.VAT_INDEX, **(self.options.get("vat_index") or {})}
+        """Indice IVA: impostato a mano (opzione vat_ids, es. {"22": 1}) o letto dal registratore."""
         rate = D(line.get("vat_rate"))
-        for k, v in idx.items():
-            if D(k) == rate:
+        for k, v in (self.options.get("vat_ids") or self.options.get("vat_index") or {}).items():
+            if v and D(k) == rate:
                 return int(v)
-        return 1
+        for refresh in (False, True):  # aliquota non trovata: si rilegge la tabella (il tecnico può averla cambiata)
+            for v in self.vat_table(refresh):
+                if D(v["rate"]) == rate:
+                    return int(v["index"])
+        raise RtNotSent(f"Aliquota IVA {rate.normalize()}% non programmata nel registratore: scrivi l'indice IVA nelle "
+                        "impostazioni del dispositivo oppure fai programmare l'aliquota dal tecnico")
 
-    def _items(self, p, tag="printRecItem") -> list[str]:
+    def pay_code(self, method: str) -> int:
+        pays = {**self.PAYMENTS, **(self.options.get("pay_types") or {}), **(self.options.get("payments") or {})}
+        try:
+            c = int(pays.get(method, pays.get("carta", 2)))
+        except (TypeError, ValueError):
+            c = 0
+        if not 1 <= c <= 30:
+            raise RtNotSent(f"Nel registratore manca il codice del pagamento «{method}»: impostalo nelle impostazioni del dispositivo")
+        return c
+
+    def sale_rows(self, p: dict) -> list[dict]:
+        """Righe con lo sconto già dentro: le righe di sconto del documento (promozioni, premi fedeltà) si tolgono dalle
+        righe della stessa aliquota, come in BluOrderScan (nessun printRecItemAdjustment, mai collaudato)."""
+        rows = [{**ln, "cents": self.cents(ln["amount"]), "full_cents": self.cents(ln.get("full_amount") or ln["amount"])}
+                for ln in p.get("lines", []) if money(ln["amount"]) > 0]
+        for a in p.get("adjustments", []):
+            left = self.cents(a["amount"])
+            for r in rows:
+                if left <= 0:
+                    break
+                if D(r["vat_rate"]) == D(a["vat_rate"]):
+                    cut = min(left, r["cents"])
+                    r["cents"] -= cut
+                    left -= cut
+            if left > 0:
+                raise RtNotSent(f"Lo sconto «{a.get('description', '')}» supera le righe con IVA {D(a['vat_rate']).normalize()}%")
+        rows = [r for r in rows if r["cents"] > 0]  # una riga tutta in omaggio non si stampa (importo zero)
+        if not rows:
+            raise RtNotSent("Lo scontrino deve avere almeno una riga con un importo")
+        return rows
+
+    def items(self, rows: list[dict], messages: bool = True) -> list[str]:
         out = []
-        for ln in p.get("lines", []):
-            full = money(ln.get("full_amount") or ln["amount"])
-            if full <= 0:
+        for r in rows:
+            out.append(self.tag("printRecItem", description=rt_clean(r["description"], self.DESC) or "ARTICOLO", unitPrice=r["cents"],
+                                department=department_for(r, self.options), IdVat=self.id_vat(r)))
+            if not messages:
                 continue
-            qty = D(ln["quantity"])
-            unit = money(ln.get("unit_price")) if qty != 1 else full
-            out.append(f'<{tag} description={quoteattr(self.desc(ln["description"]))} unitPrice="{self.cents(unit)}" '
-                       f'department="{department_for(ln, self.options)}" idVat="{self.id_vat(ln)}" '
-                       f'quantity="{int((qty * 1000).to_integral_value(ROUND_HALF_UP))}"></{tag}>')
-            disc = full - money(ln["amount"])
-            if disc > 0 and tag == "printRecItem":
-                out.append(f'<printRecItemAdjustment adjustmentType="3" description="SCONTO" amount="{self.cents(disc)}" '
-                           f'department="{department_for(ln, self.options)}" idVat="{self.id_vat(ln)}"></printRecItemAdjustment>')
+            qty = D(r.get("quantity") or 1)
+            if qty != 1:
+                q = f"{qty.normalize():f}".replace(".", ",")
+                out.append(self.tag("printRecMessage", messageType=1, font=1,
+                                    message=rt_clean(f"{q} x {self.eur(self.cents(r.get('unit_price') or 0))} EUR", self.MSG)))
+            if r["full_cents"] > r["cents"]:
+                out.append(self.tag("printRecMessage", messageType=1, font=1,
+                                    message=rt_clean(f"Sconto {self.eur(r['full_cents'] - r['cents'])} EUR", self.MSG)))
         return out
 
-    def _totals(self, p) -> list[str]:
-        pays = {**self.PAYMENTS, **(self.options.get("payments") or {})}
-        return [f'<printRecTotal description="{pay["method"].upper()[:22]}" payment="{self.cents(abs(D(pay["amount"])))}" '
-                f'paymentType="{int(pays.get(pay["method"], 2))}"></printRecTotal>' for pay in p.get("payments", [])]
+    def totals(self, p: dict) -> list[str]:
+        """Pagamenti, il contante per ultimo con l'importo ricevuto: il resto lo stampa il registratore."""
+        pays = sorted(p.get("payments", []), key=lambda x: x["method"] == "contanti")
+        out = [self.tag("printRecTotal", description="CONTANTI" if x["method"] == "contanti" else rt_clean(x["method"].replace("_", " ").upper(), self.DESC),
+                        payment=self.cents(abs(D(x["amount"]))), paymentType=self.pay_code(x["method"])) for x in pays if money(x["amount"]) != 0]
+        return out or [self.tag("printRecTotal", description="CONTANTI", payment=0, paymentType=self.pay_code("contanti"))]
 
-    def receipt_xml(self, p: dict) -> str:
-        out = ['<?xml version="1.0" encoding="utf-8"?><printerFiscalReceipt><beginFiscalReceipt></beginFiscalReceipt>']
-        out += self._items(p)
-        for a in p.get("adjustments", []):
-            if money(a["amount"]) > 0:
-                out.append(f'<printRecItemAdjustment adjustmentType="3" description={quoteattr(self.desc(a["description"]))} '
-                           f'amount="{self.cents(a["amount"])}" department="{department_for(a, self.options)}" idVat="{self.id_vat(a)}"></printRecItemAdjustment>')
+    def end(self, my_id: str) -> str:
+        return self.tag("endFiscalReceiptCut" if self.options.get("cut", True) else "endFiscalReceipt", IdCmd=my_id)
+
+    def receipt_xml(self, p: dict, my_id: str | None = None) -> str:
+        body = [self.tag("beginFiscalReceipt")] + self.items(self.sale_rows(p))
         if p.get("lottery"):
-            out.append(f'<setLotteryCode code={quoteattr(p["lottery"])}></setLotteryCode>')
-        out += self._totals(p)
-        out.append("<endFiscalReceiptCut></endFiscalReceiptCut></printerFiscalReceipt>")
-        return "".join(out)
+            body.append(self.tag("setLotteryCode", code=p["lottery"]))
+        body.append(self.tag("printRecSubtotal"))
+        body += self.totals(p)
+        if p.get("document"):
+            body.append(self.tag("printRecMessage", messageType=3, font=1, message=rt_clean(f"Rif. {p['document']}", self.MSG)))
+        body.append(self.end(my_id or self.idcmd(p.get("document"))))
+        return self.doc("printerFiscalReceipt", body)
 
-    def refund_xml(self, p: dict) -> str:
-        ref = p.get("reference")
-        tag = "beginRtDocAnnulment" if p.get("void") else "beginRtDocRefund"
+    def refund_xml(self, p: dict, my_id: str | None = None) -> str:
+        """Annullo (collaudato in BluOrderScan: stesse righe dello scontrino e totale «ANNULLO») o reso (da collaudare)."""
+        ref, void = p.get("reference"), bool(p.get("void"))
+        rows = [{**ln, "cents": self.cents(ln["amount"]), "full_cents": self.cents(ln["amount"])}
+                for ln in p.get("lines", []) if money(ln["amount"]) > 0]
+        my_id = my_id or self.idcmd(p.get("document"), "R")
         if ref:
             d = datetime.strptime(ref["date"][:10], "%Y-%m-%d")
-            begin = (f'<{tag} docRefZ="{int(ref.get("z") or 0):04d}" docRefNumber="{int(ref.get("number") or 0):04d}" docDate="{d:%d%m%y}" '
-                     f'printPreview="0" fiscalSerial="{ref.get("serial") or self.options.get("serial") or ""}" checkOnly="0"></{tag}>')
-        else:  # reso senza documento d'origine
-            special = "beginRtDocAnnulmentSpecial" if p.get("void") else "beginRtDocRefundSpecial"
-            begin = f'<{special} service="ND" docDate="{date.today():%d%m%y}"></{special}>'
-        out = ['<?xml version="1.0" encoding="utf-8"?><printerFiscalReceipt>', begin]
-        out += self._items(p, tag="printRecRefund")
-        out += self._totals(p)
-        out.append("<endFiscalReceiptCut></endFiscalReceiptCut></printerFiscalReceipt>")
-        return "".join(out)
-
-    def send(self, body: str, timeout: int = 30) -> ET.Element:
-        url = f"{self.address.rstrip('/')}/xml/printer.htm"
-        headers = {"Content-Type": "text/plain; charset=utf-8"}
-        if self.options.get("username"):
-            import base64
-            tok = base64.b64encode(f"{self.options['username']}:{self.options.get('password', '')}".encode()).decode()
-            headers["Authorization"] = f"Basic {tok}"
-        resp = find(parse_xml(self.http(url, body.encode("utf-8"), headers, timeout + 5)), "response")
-        if resp is None:
-            raise DeviceError("Risposta del registratore non valida")
-        if resp.get("success", "").lower() != "true":
-            raise DeviceError(f"Il registratore ha rifiutato il documento (errore {resp.get('status') or '?'})")
-        return resp
+            attrs = {"docRefZ": int(ref.get("z") or 0), "docRefNumber": int(ref.get("number") or 0), "docDate": f"{d:%d%m%y}"}
+            if not void:
+                attrs.update(printPreview=0, fiscalSerial=ref.get("serial") or self.options.get("serial") or "", checkOnly=0)
+            body = [self.tag("beginRtDocAnnulment" if void else "beginRtDocRefund", **attrs)]
+        else:  # documento d'origine non emesso da questo registratore
+            body = [self.tag("beginRtDocAnnulmentSpecial" if void else "beginRtDocRefundSpecial", service="ND", docDate=f"{date.today():%d%m%y}")]
+        if void:
+            body += self.items(rows, messages=False)
+            total = sum(r["cents"] for r in rows)
+            body.append(self.tag("printRecTotal", description="ANNULLO", payment=total, paymentType=self.pay_code("contanti")))
+        else:
+            body += [x.replace("<printRecItem ", "<printRecRefund ").replace("</printRecItem>", "</printRecRefund>")
+                     for x in self.items(rows, messages=False)]
+            body += self.totals(p)
+        body.append(self.end(my_id))
+        return self.doc("printerFiscalReceipt", body)
 
     @staticmethod
     def direct_io(command: str, data: str) -> str:
-        return (f'<?xml version="1.0" encoding="utf-8"?><printerCommand><directIO command="{command}" data={quoteattr(data)}>'
-                '</directIO></printerCommand>')
+        return CustomRT.doc("printerCommand", [CustomRT.tag("directIO", command=command, data=data)])
+
+    # ------------------------------------------------------------------------------------------------ operazioni
+    def fiscal(self, xml: str, my_id: str, what: str = "scontrino") -> dict:
+        """Documento fiscale: un solo XML. Rifiutato → resetPrinter; risposta persa → verifica con lastIdCmd."""
+        try:
+            st = self.request(xml)
+        except RtNoAnswer as e:
+            st = self.verify(my_id, str(e))
+        else:
+            if not st["ok"]:
+                self.reset("dopo il rifiuto")  # documento rifiutato a metà: altrimenti blocca tutto il resto
+                raise RtNotSent(f"{st['message']}: {what} non emesso")
+        return self.info(st)
+
+    def info(self, st: dict) -> dict:
+        n, z = st.get("fiscal_number"), st.get("z_number")
+        out = {"number": n.zfill(4) if n and n.isdigit() else n, "z": z.zfill(4) if z and z.isdigit() else z,
+               "date": date.today().isoformat(), "serial": self.options.get("serial")}
+        if st.get("problems"):
+            out["problems"] = st["problems"]
+        if st.get("already_done"):
+            out["verified"] = True
+        return out
+
+    def report(self, kind: str) -> dict:
+        xml = self.doc("printerFiscalReport", [self.tag("printXReport") if kind == "X" else self.tag("printZReport", description="")])
+        try:
+            st = self.request(xml, self.REPORT_TIMEOUT)
+        except RtNoAnswer as e:
+            raise RtNoAnswer(f"{e}. Controlla sul registratore se la chiusura è uscita") from None
+        if not st["ok"]:
+            self.reset("dopo il rifiuto")
+            raise RtNotSent(f"{st['message']}: chiusura non eseguita")
+        if kind == "Z":
+            time.sleep(self.after_z_pause)
+            self.reset("dopo la chiusura")
+        return {"z": st.get("z_number"), "date": date.today().isoformat(), "problems": st.get("problems", [])}
 
     def nonfiscal(self, p: dict) -> dict:
         """Scontrino NON fiscale sul registratore con i comandi Custom 4001 / 4003 / 4004 via directIO, uno per richiesta,
@@ -414,41 +687,49 @@ class CustomRT:
         width = int(self.options.get("width") or 32)
         rows = text_rows(p, width, rt=True)
         try:
-            self.send(self.direct_io("4001", "10"))  # DOC 1 = scontrino non fiscale, COPIA 0
+            self.send(self.direct_io("4001", "10"), 30)  # DOC 1 = scontrino non fiscale, COPIA 0
             for r in rows:
-                self.send(self.direct_io("4003", f"1{len(r):02d}{r}"))
-            self.send(self.direct_io("4004", ""))
+                self.send(self.direct_io("4003", f"1{len(r):02d}{r}"), 30)
+            self.send(self.direct_io("4004", ""), 30)
         except DeviceError as e:
-            try:
-                self.send('<?xml version="1.0" encoding="utf-8"?><printerCommand><resetPrinter></resetPrinter></printerCommand>', timeout=15)
-            except Exception:  # noqa: BLE001
-                log("Annullo del documento non fiscale rimasto aperto non riuscito")
-            raise DeviceError(f"Stampa non fiscale rifiutata: {e}") from e
+            self.reset("dopo la stampa non fiscale")
+            raise RtNotSent(f"Stampa non fiscale rifiutata: {e}") from e
         return {"printed": True, "rows": len(rows)}
 
-    def _info(self, resp) -> dict:
-        info = {child_tag(e): (e.text or "").strip() for e in resp.iter()}
-        n, z = info.get("fiscalDoc"), info.get("nClose")
-        return {"number": n.zfill(4) if n and n.isdigit() else n, "z": z.zfill(4) if z and z.isdigit() else z,
-                "date": date.today().isoformat(), "serial": self.options.get("serial")}
+    def status(self) -> dict:
+        try:
+            st = self.request(self.command("queryPrinterStatus"), timeout=15)
+        except RtNoAnswer as e:
+            raise RtNotSent(f"Il registratore {self.host}:{self.port} non risponde al protocollo XML ({e}). Controlla che la "
+                            "porta sia quella del server web del registratore (di solito 80)") from None
+        if not st["ok"]:
+            raise RtNotSent(st["message"])
+        out = {"ok": True, "model": st.get("model"), "problems": st.get("problems", []), "z": st.get("z_number"),
+               "number": st.get("fiscal_number")}
+        try:
+            out["vat_table"] = self.vat_table(refresh=True)
+        except DeviceError as e:
+            out["vat_error"] = str(e)
+        return out
 
     def run(self, kind: str, p: dict) -> dict:
         if kind == "rt.receipt":
-            return self._info(self.send(self.receipt_xml(p)))
+            my_id = self.idcmd(p.get("document"))
+            return self.fiscal(self.receipt_xml(p, my_id), my_id)
         if kind == "rt.refund":
-            return self._info(self.send(self.refund_xml(p)))
+            my_id = self.idcmd(p.get("document"), "R")
+            return self.fiscal(self.refund_xml(p, my_id), my_id, "annullo" if p.get("void") else "reso")
         if kind == "rt.z":
-            info = self._info(self.send('<?xml version="1.0" encoding="utf-8"?><printerFiscalReport><printZReport description="">'
-                                        '</printZReport></printerFiscalReport>', timeout=120))
-            return {"z": info.get("z"), "date": info.get("date")}
+            return self.report("Z")
         if kind == "rt.x":
-            self.send('<?xml version="1.0" encoding="utf-8"?><printerFiscalReport><printXReport></printXReport></printerFiscalReport>')
+            self.report("X")
             return {}
         if kind == "rt.nonfiscal":
             return self.nonfiscal(p)
+        if kind == "rt.vat":
+            return {"vat_table": self.vat_table(refresh=True)}
         if kind == "status":
-            resp = self.send('<?xml version="1.0" encoding="utf-8"?><printerCommand><queryPrinterStatus></queryPrinterStatus></printerCommand>')
-            return {"ok": True, "status": resp.get("status")}
+            return self.status()
         raise DeviceError(f"Operazione non prevista per il registratore: {kind}")
 
 
@@ -502,9 +783,50 @@ class SimulatedRT:
 ESC, GS = b"\x1b", b"\x1d"
 
 
-def escpos(p: dict, width: int = 48, codepage: int = 19) -> bytes:
-    """Testo neutro → comandi ESC/POS (pagina di codici 19 = CP858, che contiene €)."""
-    out = bytearray(ESC + b"@" + ESC + b"t" + bytes([codepage]))
+# Tabelle dei caratteri: (numero per ESC t n, codifica Python). Esperienza di BluOrderScan e del gestionale macellerie:
+# le Epson originali hanno la PC858 (con € e le lettere accentate); molte compatibili al numero 19 hanno un'altra tabella
+# (es. greca: «più» stampato «piΩ») e vanno impostate su PC850 o PC437 (accenti sì, € no → «EUR»). «ascii» non usa
+# nessuna tabella: «più» → «piu'». La pagina di prova stampa «àèéìòù ÀÈÉ €» per scegliere quella giusta.
+CHARSETS = {"pc858": (19, "cp858"), "pc850": (2, "cp850"), "pc437": (0, "cp437"), "ascii": (0, None)}
+REPLACE = {"–": "-", "—": "-", "‘": "'", "’": "'", "“": '"', "”": '"', "…": "...", "·": "-", "×": "x", "\u00a0": " ", "\u202f": " "}
+
+
+class Charset:
+    def __init__(self, name: str = "pc858"):
+        self.name = name if name in CHARSETS else "pc858"
+        self.number, self.codec = CHARSETS[self.name]
+        self.euro = self.name == "pc858"  # il simbolo € c'è solo nella PC858
+
+    def select(self) -> bytes:
+        return ESC + b"t" + bytes([self.number])
+
+    def norm(self, text: str) -> str:
+        """Testo come verrà stampato (un carattere = un byte): serve anche per allineare le colonne."""
+        import unicodedata
+        t = "".join(REPLACE.get(ch, ch) for ch in (text or ""))
+        if not self.euro:
+            t = t.replace("€", "EUR")
+        if self.codec is None:  # senza accenti: «più» → «piu'», «perché» → «perche'»
+            t = re.sub(r"([aeiouAEIOU])[\u0300\u0301]", r"\1'", unicodedata.normalize("NFD", t))
+            t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode()
+        return t
+
+    def enc(self, text: str) -> bytes:
+        import unicodedata
+        out = bytearray()
+        for ch in self.norm(text):
+            try:
+                out += ch.encode(self.codec or "ascii")
+            except UnicodeEncodeError:  # carattere fuori tabella: lettera senza accento o «?»
+                out += unicodedata.normalize("NFKD", ch).encode("ascii", "ignore")[:1] or b"?"
+        return bytes(out)
+
+
+def escpos(p: dict, width: int = 48, charset: str = "pc858") -> bytes:
+    """Testo neutro → comandi ESC/POS con la tabella dei caratteri scelta per la stampante (vedi CHARSETS)."""
+    import textwrap
+    cs = Charset(charset)
+    out = bytearray(ESC + b"@" + cs.select())
     align = {"left": 0, "center": 1, "right": 2}
     for ln in p.get("lines", []):
         t = ln.get("type", "text")
@@ -529,13 +851,19 @@ def escpos(p: dict, width: int = 48, codepage: int = 19) -> bytes:
             out += GS + b"(k" + bytes([size % 256, size // 256]) + b"1P0" + data + GS + b"(k\x03\x001Q0\n"
             continue
         size = int(ln.get("size", 1))
+        cols = width // (2 if size >= 2 else 1)
         out += GS + b"!" + bytes([0x11 if size >= 2 else 0x00]) + ESC + b"E" + bytes([1 if ln.get("bold") else 0])
-        text = str(ln.get("text", ""))
-        if ln.get("right"):  # due colonne: testo a sinistra, importo a destra
-            w = width // (2 if size >= 2 else 1)
-            right = str(ln["right"])
-            text = text[: max(1, w - len(right) - 1)].ljust(w - len(right)) + right
-        out += text.encode("cp858", "replace") + b"\n"
+        text = cs.norm(str(ln.get("text", "")))
+        if ln.get("right"):  # due colonne: testo a sinistra (a capo se lungo), importo allineato a destra
+            right = cs.norm(str(ln["right"]))[: cols - 2]
+            parts = textwrap.wrap(text, max(cols - len(right) - 1, 8)) or [""]
+            for part in parts[:-1]:
+                out += cs.enc(part) + b"\n"
+            last = parts[-1]
+            out += cs.enc(last + " " * max(1, cols - len(last) - len(right)) + right) + b"\n"
+        else:
+            for part in textwrap.wrap(text, cols, break_long_words=True) or [""]:
+                out += cs.enc(part) + b"\n"
         out += GS + b"!\x00" + ESC + b"E\x00"
     if p.get("open_drawer"):
         out += ESC + b"p\x00\x19\xfa"
@@ -589,7 +917,7 @@ class Printer:
 
     def run(self, kind: str, p: dict) -> dict:
         if kind == "print.text":
-            self._send(escpos(p, int(self.options.get("columns", 48))))
+            self._send(escpos(p, int(self.options.get("columns", 48)), self.options.get("charset") or "pc858"))
             return {"printed": True}
         if kind == "print.zpl":
             data = (p.get("zpl") or "").encode("utf-8")

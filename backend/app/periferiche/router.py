@@ -134,7 +134,7 @@ class DeviceIn(BaseModel):
 
 @router.get("/driver")
 def drivers(ctx: TenantContext = Depends(user)):
-    return {"kinds": per.KINDS, "drivers": per.DRIVERS}
+    return {"kinds": per.KINDS, "drivers": per.DRIVERS, "charsets": per.CHARSETS}
 
 
 @router.get("/dispositivi")
@@ -203,11 +203,24 @@ TEST_PAGE = {"lines": [{"text": "BluBeauty", "align": "center", "bold": True, "s
                        {"type": "cut"}]}
 
 
+def test_page(d: Device) -> dict:
+    """Pagina di prova della termica con accenti ed euro, per scegliere la tabella dei caratteri giusta (come BluOrderScan)."""
+    o = d.options or {}
+    cols, cs = int(o.get("columns") or 48), o.get("charset") or "pc858"
+    lines = TEST_PAGE["lines"][:-1] + [
+        {"type": "feed"}, {"text": "Accenti: àèéìòù ÀÈÉ - Euro: €", "align": "center", "bold": True},
+        {"text": f"Tabella caratteri: {per.CHARSETS.get(cs, cs)}", "align": "center"},
+        {"text": "".join(str(i % 10) for i in range(1, cols + 1))},
+        {"text": "Se al posto di «più» leggi «piΩ» o simboli strani, scegli un'altra tabella dei caratteri", "align": "center"},
+        {"type": "cut"}]
+    return {"lines": lines}
+
+
 @router.post("/dispositivi/{device_id}/prova")
 def test_device(device_id: uuid.UUID, ctx: TenantContext = Depends(admin)):
     d = _get(ctx, Device, device_id)
     if d.kind == "stampante":
-        kind, payload = "print.text", TEST_PAGE
+        kind, payload = "print.text", test_page(d)
     elif d.kind == "etichette":
         tpl = {"width_mm": 50, "height_mm": 30, "elements": lab.DEFAULT_TEMPLATES[0]["elements"]}
         kind, payload = "print.zpl", {"zpl": lab.to_zpl(tpl, [{"quantity": 1, "fields": {"description": "Etichetta di prova BluBeauty",
@@ -217,7 +230,7 @@ def test_device(device_id: uuid.UUID, ctx: TenantContext = Depends(admin)):
     else:
         kind, payload = "status", {}
     j = per.enqueue(ctx.db, d, kind, payload, user_id=ctx.user.id)
-    j = _wait(ctx, j.id, 12)
+    j = _wait(ctx, j.id, 30 if d.kind == "rt" else 12)  # il Custom legge anche le aliquote IVA
     agent = ctx.db.get(Agent, d.agent_id)
     if j.status == "in_coda":
         per.cancel(ctx.db, j)

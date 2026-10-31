@@ -29,13 +29,14 @@ DRIVERS = {
     "epson_rt": {"kind": "rt", "label": "Epson FP-81 II RT / FP-90III (rete)", "address": "Indirizzo IP, es. 192.168.1.50",
                  "options": {"serial": "", "departments": {"22": 1, "10": 2, "5": 3, "4": 4, "0": 5}}},
     "custom_rt": {"kind": "rt", "label": "Custom RT (Q3X, KUBE II F… in rete)", "address": "Indirizzo IP, es. 192.168.1.51",
-                  "options": {"serial": "", "departments": {"22": 1, "10": 2, "5": 3, "4": 4, "0": 5}, "username": "", "password": ""}},
+                  "options": {"serial": "", "departments": {"22": 1, "10": 2, "5": 3, "4": 4, "0": 5}, "username": "", "password": "",
+                              "vat_ids": {}, "width": 32}},
     "simulatore_rt": {"kind": "rt", "label": "Simulatore (prove senza registratore)", "address": "", "options": {"serial": "99SIM000001"}},
     "escpos_tcp": {"kind": "stampante", "label": "Stampante termica ESC/POS in rete", "address": "IP[:porta], es. 192.168.1.60:9100",
-                   "options": {"columns": 48}},
+                   "options": {"columns": 48, "charset": "pc858"}},
     "escpos_windows": {"kind": "stampante", "label": "Stampante termica installata su Windows (USB)", "address": "Nome della stampante in Windows",
-                       "options": {"columns": 48}},
-    "simulatore_stampante": {"kind": "stampante", "label": "Simulatore (salva su file)", "address": "Cartella (facoltativa)", "options": {"columns": 48}},
+                       "options": {"columns": 48, "charset": "pc858"}},
+    "simulatore_stampante": {"kind": "stampante", "label": "Simulatore (salva su file)", "address": "Cartella (facoltativa)", "options": {"columns": 48, "charset": "pc858"}},
     "zpl_tcp": {"kind": "etichette", "label": "Stampante di etichette ZPL (Zebra…) in rete", "address": "IP[:porta], es. 192.168.1.70:9100", "options": {}},
     "zpl_windows": {"kind": "etichette", "label": "Stampante di etichette ZPL installata su Windows (USB)", "address": "Nome della stampante in Windows", "options": {}},
     "simulatore_etichette": {"kind": "etichette", "label": "Simulatore (salva il file ZPL)", "address": "Cartella (facoltativa)", "options": {}},
@@ -43,6 +44,10 @@ DRIVERS = {
                          "options": {"baud": 9600, "request": "W\\r", "regex": "([-+]?\\d+[.,]\\d+)", "grams": False}},
     "simulatore_bilancia": {"kind": "bilancia", "label": "Simulatore (peso inventato o fisso)", "address": "", "options": {"weight": ""}},
 }
+# Tabelle dei caratteri delle termiche (agent: CHARSETS). Esperienza di BluOrderScan: le compatibili spesso al n. 19 non
+# hanno la PC858 ma un'altra tabella (es. greca: «più» → «piΩ») e vanno messe su PC850 o PC437.
+CHARSETS = {"pc858": "PC858 (Epson originali: accenti ed €)", "pc850": "PC850 (compatibili: accenti, € scritto EUR)",
+            "pc437": "PC437 (compatibili più vecchie)", "ascii": "Senza accenti (più → piu')"}
 STATUS_LABEL = {"in_coda": "in coda", "inviato": "in stampa", "eseguito": "eseguito", "errore": "errore", "annullato": "annullato"}
 
 

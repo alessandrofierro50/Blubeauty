@@ -57,7 +57,7 @@ function AgentsAndDevices() {
     setTesting(d.id)
     try {
       const r = await PER(`/dispositivi/${d.id}/prova`, { method: 'POST' })
-      if (r.ok) notifyOk(d.kind === 'bilancia' ? `Peso letto: ${Number(r.result.weight).toLocaleString('it-IT')} kg` : d.kind === 'rt' ? 'Il registratore risponde' : 'Stampa di prova inviata')
+      if (r.ok) notifyOk(d.kind === 'bilancia' ? `Peso letto: ${Number(r.result.weight).toLocaleString('it-IT')} kg` : d.kind === 'rt' ? `Il registratore risponde${r.result?.model ? ` (${r.result.model})` : ''}${r.result?.vat_table?.length ? ` · aliquote IVA: ${r.result.vat_table.map((x: any) => `${x.index}=${x.rate}%`).join(', ')}` : ''}${r.result?.problems?.length ? ` · attenzione: ${r.result.problems.join(', ')}` : ''}` : 'Stampa di prova inviata')
       else notifyError(new Error(r.error || 'Prova non riuscita'))
     } catch (e) { notifyError(e) } finally { setTesting(null) }
   }
@@ -182,6 +182,20 @@ function DeviceEditor({ d, agents, drivers, onClose, onSaved }: { d: any; agents
               </Group>
             </div>
             {v.driver === 'custom_rt' && (
+              <div>
+                <Text size="sm" fw={500}>Indici IVA del registratore (facoltativi)</Text>
+                <Text size="xs" c="dimmed" mb={4}>Vuoti: BluBeauty li legge da solo dal registratore (pulsante «Prova» per vederli). Scrivili solo se il tecnico lo indica.</Text>
+                <Group gap="xs">
+                  {['22', '10', '5', '4'].map((rate) => (
+                    <NumberInput key={rate} w={110} size="xs" label={`IVA ${rate}%`} min={1} max={99} value={v.options.vat_ids?.[rate] ?? ''}
+                      onChange={(x) => opt('vat_ids', { ...(v.options.vat_ids ?? {}), [rate]: Number(x) || undefined })} />
+                  ))}
+                  <NumberInput w={160} size="xs" label="Caratteri per riga (non fiscale)" min={20} max={48} value={v.options.width ?? 32}
+                    onChange={(x) => opt('width', Number(x) || 32)} />
+                </Group>
+              </div>
+            )}
+            {v.driver === 'custom_rt' && (
               <SimpleGrid cols={2}>
                 <TextInput label="Utente (se richiesto)" value={v.options.username ?? ''} onChange={(e) => opt('username', e.currentTarget.value)} />
                 <TextInput label="Password" type="password" value={v.options.password ?? ''} onChange={(e) => opt('password', e.currentTarget.value)} />
@@ -192,7 +206,14 @@ function DeviceEditor({ d, agents, drivers, onClose, onSaved }: { d: any; agents
             {v.driver === 'simulatore_rt' && <Switch label="Simula un errore (carta finita)" checked={!!v.options.fail} onChange={(e) => opt('fail', e.currentTarget.checked ? 'Carta finita' : '')} />}
           </>
         )}
-        {spec?.kind === 'stampante' && <NumberInput label="Caratteri per riga" description="48 per carta da 80 mm, 32 per 58 mm" value={v.options.columns ?? 48} onChange={(x) => opt('columns', Number(x) || 48)} w={200} />}
+        {spec?.kind === 'stampante' && (
+          <SimpleGrid cols={2}>
+            <NumberInput label="Caratteri per riga" description="48 per carta da 80 mm, 32 per 58 mm" value={v.options.columns ?? 48} onChange={(x) => opt('columns', Number(x) || 48)} />
+            <Select label="Tabella dei caratteri" description="Se gli accenti escono strani (es. «piΩ»), prova PC850"
+              data={Object.entries(drivers.charsets ?? {}).map(([value, label]: any) => ({ value, label }))}
+              value={v.options.charset ?? 'pc858'} onChange={(x) => opt('charset', x || 'pc858')} allowDeselect={false} />
+          </SimpleGrid>
+        )}
         {v.driver === 'bilancia_seriale' && (
           <SimpleGrid cols={2}>
             <Select label="Velocità (baud)" data={['2400', '4800', '9600', '19200']} value={String(v.options.baud ?? 9600)} onChange={(x) => opt('baud', Number(x))} />

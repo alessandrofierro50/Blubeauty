@@ -37,3 +37,11 @@ Cosa fa
 Registratori supportati: Epson FP-81 II RT e FP-90III (protocollo XML in rete), Custom RT in rete (protocollo XML).
 Prima di usare un registratore in negozio fate una prova completa (vendita, reso, chiusura) con il vostro tecnico:
 reparti e aliquote devono corrispondere alla programmazione del registratore.
+
+Registratore Custom: stesso formato collaudato sul KUBE II-F in BluOrderScan. Le aliquote IVA si leggono dal registratore
+(pulsante «Prova» nel gestionale); se il registratore rifiuta un documento l'agent lo annulla (resetPrinter) e mostra il
+codice d'errore del manuale (file rt_errors.py, da tenere accanto all'agent). Se la risposta si perde l'agent chiede al
+registratore se lo scontrino è uscito: non lo ristampa mai alla cieca.
+
+Stampante termica e accenti: nel gestionale scegliete la «Tabella dei caratteri». PC858 per le Epson originali; se nella
+stampa di prova al posto di «più» compare «piΩ» o altri simboli, scegliete PC850 (o PC437); «Senza accenti» stampa «piu'».

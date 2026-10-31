@@ -61,7 +61,11 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 
 ## Periferiche, fattura elettronica, super admin, Console (ereditati da BluGest, identici)
 - BluBeauty Agent: `agent/blubeauty_agent.py` (driver epson_rt, custom_rt, ESC/POS, simulatori); coda `device_jobs`;
-  un lavoro "inviato" non si rimanda da solo. DA FARE: prova con registratori veri prima dell'uso in salone.
+  un lavoro "inviato" non si rimanda da solo. **Custom RT = formato collaudato di BluOrderScan** sul KUBE II-F (un XML,
+  unitPrice = importo di riga, IdVat letto dal registratore o `vat_ids`, subtotale, contante ricevuto, IdCmd, reset se
+  rifiutato, verifica `lastIdCmd` se la risposta si perde, Z senza IdCmd + 20 s + reset; codici in `agent/rt_errors.py`).
+  **Termica**: opzione `charset` (pc858 Epson con €, pc850/pc437 per le compatibili che al n. 19 stampano «piΩ», ascii);
+  la stampa di prova ha la riga degli accenti. Dettagli in `docs/BLUBEAUTY.md`. DA FARE: prova con registratori veri.
 - FatturaPA: `app/fatturapa/` (XML FPR12 validato sull'XSD 1.2.2, client Aruba, callback). DA FARE: prova Aruba reale.
 - Pannello super admin `/admin` (aziende, periodi, rinnovo, conversione prova, moduli extra, impersonificazione, log,
   export), avvisi 30/15/7/3/1/0, Console `GET /api/console/riepilogo` e credenziali (§7–§8 di `comune/abbonamenti.md`),

@@ -87,21 +87,168 @@ def test_epson_reso_annullo_ed_esito():
         A.EpsonRT("192.168.1.50", {}, http=refused).run("rt.receipt", SALE)
 
 
-def test_custom():
-    rt = A.CustomRT("192.168.1.51", {"serial": "STMTE500271"})
-    x = rt.receipt_xml(SALE)
+class FakeCustom:
+    """Registratore Custom finto: risponde come il KUBE II-F (risposte XML di /xml/printer.htm)."""
+
+    def __init__(self, vat=((1, 2200), (2, 1000), (3, 400), (4, 500)), refuse=None, lose=False, last_idcmd=None, fp_status="000"):
+        self.sent, self.vat, self.refuse, self.lose = [], dict(vat), refuse, lose
+        self.last_idcmd, self.fp_status = last_idcmd, fp_status
+
+    def __call__(self, url, data, headers, timeout):
+        x = data.decode()
+        self.sent.append(x)
+        assert url.endswith("/xml/printer.htm") and headers["Content-Type"].startswith("text/plain")
+        m = re.search(r'getVatRate numVat="(\d+)"', x)
+        if m:
+            n = int(m.group(1))
+            buf = f"{n:02d}{self.vat[n]:04d}  IVA {self.vat[n] / 100:g}%" if n in self.vat else f"{n:02d}0000"
+            return f'<response success="true" status="0"><addInfo><responseBuf>{buf}</responseBuf></addInfo></response>'.encode()
+        if "queryPrinterStatus" in x:
+            return (f'<response success="true" status="0"><addInfo><lastIdCmd IdCmd="{self.last_idcmd or ""}"></lastIdCmd>'
+                    f'<fpStatus>{self.fp_status}</fpStatus><printerStatus>00000</printerStatus><cpuRel>KUBE II-F</cpuRel></addInfo></response>').encode()
+        if self.refuse and self.refuse in x:
+            return b'<response success="false" status="28"></response>'
+        if self.lose and "printerFiscalReceipt" in x:
+            raise A.RtNoAnswer("Risposta non ricevuta (timeout)")
+        return b'<response success="true" status="0"><addInfo><fiscalDoc>57</fiscalDoc><nClose>12</nClose></addInfo></response>'
+
+
+@pytest.fixture(autouse=True)
+def no_wait(monkeypatch):
+    monkeypatch.setattr(A.CustomRT, "VERIFY_WAITS", (0, 0, 0))
+    A.CustomRT._vat_cache.clear()
+
+
+def test_custom_scontrino_come_bluorderscan():
+    """Formato collaudato sul KUBE II-F reale in BluOrderScan: un solo XML, importo della riga, IdVat, messaggio quantità,
+    subtotale, contante ricevuto per ultimo, IdCmd sull'ultimo nodo; aliquote lette dal registratore."""
+    fake = FakeCustom()
+    rt = A.CustomRT("192.168.1.51", {"serial": "STMTE500271"}, http=fake)
+    res = rt.run("rt.receipt", {**SALE, "document": "SCO 12/2026"})
+    assert (res["number"], res["z"]) == ("0057", "0012")
+    x = fake.sent[-1]
     root = ET.fromstring(x.split("?>", 1)[1])
+    assert [c.tag for c in root][0] == "beginFiscalReceipt" and [c.tag for c in root][-1] == "endFiscalReceiptCut"
     items = root.findall("printRecItem")
-    assert [(i.get("unitPrice"), i.get("quantity"), i.get("idVat")) for i in items] == [("40", "6000", "1"), ("350", "1250", "3"), ("215", "1000", "3")]
-    assert [a.get("amount") for a in root.findall("printRecItemAdjustment")] == ["24", "80"]
+    # acqua 6 × 0,40 scontata a 2,16 e promo 0,80 sull'IVA 22% → 1,36; pane 4,38; frutta 2,15 (reparto della cassa 7)
+    assert [(i.get("description"), i.get("unitPrice"), i.get("IdVat"), i.get("department")) for i in items] == [
+        ("Acqua naturale 1,5 l", "136", "1", "1"), ("Pane casereccio", "438", "3", "1"), ("Frutta", "215", "3", "7")]
+    msgs = [m.get("message") for m in root.findall("printRecMessage")]
+    assert "6 x 0,40 EUR" in msgs and "1,25 x 3,50 EUR" in msgs and "Sconto 1,04 EUR" in msgs and msgs[-1] == "Rif. SCO 12/2026"
+    assert root.find("printRecItemAdjustment") is None and root.find("printRecSubtotal") is not None
+    assert [(t.get("description"), t.get("payment"), t.get("paymentType")) for t in root.findall("printRecTotal")] == [
+        ("CARTA", "100", "2"), ("CONTANTI", "1000", "1")]
     assert root.find("setLotteryCode").get("code") == "ABCD1234"
-    assert [(t.get("payment"), t.get("paymentType")) for t in root.findall("printRecTotal")] == [("1000", "1"), ("100", "2")]
+    assert root.find("endFiscalReceiptCut").get("IdCmd") == "SCO122026E"
+    # descrizioni senza accenti e al massimo 22 caratteri
+    x = rt.receipt_xml({**SALE, "lines": [{**SALE["lines"][2], "description": "Piega più trattamento cheratina €"}], "adjustments": []})
+    assert 'description="Piega piu trattamento "' in x or 'description="Piega piu trattamento"' in x
+    # aliquota non programmata: nulla parte
+    with pytest.raises(A.RtNotSent, match="non programmata"):
+        A.CustomRT("192.168.1.52", {}, http=FakeCustom(vat=((1, 2200),))).run("rt.receipt", SALE)
+    # indice IVA scritto a mano: non serve leggerlo
+    fake2 = FakeCustom(vat=())
+    A.CustomRT("192.168.1.51", {"vat_ids": {"22": 5, "4": 6}}, http=fake2).run("rt.receipt", SALE)
+    assert 'IdVat="5"' in fake2.sent[-1] and not any("getVatRate" in s for s in fake2.sent)
+
+
+def test_custom_rifiuto_risposta_persa_e_chiusura(monkeypatch):
+    # rifiutato: resetPrinter e «non emesso» (si può riprovare)
+    fake = FakeCustom(refuse="beginFiscalReceipt")
+    with pytest.raises(A.RtNotSent, match="IVA NON PROGRAMMATA.*non emesso"):
+        A.CustomRT("192.168.1.51", {}, http=fake).run("rt.receipt", SALE)
+    assert "resetPrinter" in fake.sent[-1]
+    # risposta persa ma il registratore l'ha emesso (lastIdCmd uguale): esito registrato, nessuna ristampa
+    fake = FakeCustom(lose=True, last_idcmd="SCO132026E", fp_status="000")
+    res = A.CustomRT("192.168.1.51", {}, http=fake).run("rt.receipt", {**SALE, "document": "SCO 13/2026"})
+    assert res["verified"] and sum("beginFiscalReceipt" in s for s in fake.sent) == 1
+    # risposta persa e documento non emesso: si può riprovare
+    with pytest.raises(A.RtNotSent, match="NON emesso"):
+        A.CustomRT("192.168.1.51", {}, http=FakeCustom(lose=True, last_idcmd="ALTRO", fp_status="000")).run("rt.receipt", SALE)
+    # stato incerto (documento ancora aperto): chiede di controllare, non ristampa
+    with pytest.raises(A.RtNoAnswer, match="Controlla sul registratore"):
+        A.CustomRT("192.168.1.51", {}, http=FakeCustom(lose=True, last_idcmd="ALTRO", fp_status="010")).run("rt.receipt", SALE)
+    # chiusura Z come il manuale (senza IdCmd), poi pausa e resetPrinter per la «VISITA TECNICA»
+    pauses = []
+    monkeypatch.setattr(A.time, "sleep", lambda s: pauses.append(s))
+    fake = FakeCustom()
+    z = A.CustomRT("192.168.1.51", {}, http=fake).run("rt.z", {})
+    assert z["z"] == "12" and '<printZReport description=""></printZReport>' in fake.sent[0] and "IdCmd" not in fake.sent[0]
+    assert pauses == [20] and "resetPrinter" in fake.sent[-1]
+    # annullo nel formato di BluOrderScan
+    fake = FakeCustom()
     ref = {"z": "12", "number": "7", "date": "2026-10-28", "serial": "STMTE500271"}
+    A.CustomRT("192.168.1.51", {}, http=fake).run("rt.refund", {"lines": SALE["lines"][2:], "payments": [], "reference": ref,
+                                                                 "void": True, "document": "RSO 3/2026"})
+    r = ET.fromstring(fake.sent[-1].split("?>", 1)[1])
+    b = r.find("beginRtDocAnnulment")
+    assert (b.get("docRefZ"), b.get("docRefNumber"), b.get("docDate")) == ("12", "7", "281026")
+    assert r.find("printRecTotal").get("description") == "ANNULLO" and r.find("printRecTotal").get("payment") == "215"
+    assert r.find("endFiscalReceiptCut").get("IdCmd") == "RSO32026R"
+    # reso (da collaudare) e annullo senza documento d'origine
+    rt = A.CustomRT("192.168.1.51", {"serial": "STMTE500271"}, http=FakeCustom())
     r = ET.fromstring(rt.refund_xml({"lines": SALE["lines"][:1], "payments": [], "reference": ref}).split("?>", 1)[1])
-    b = r.find("beginRtDocRefund")
-    assert (b.get("docRefZ"), b.get("docRefNumber"), b.get("docDate"), b.get("fiscalSerial")) == ("0012", "0007", "281026", "STMTE500271")
-    assert r.find("beginRtDocRefundSpecial") is None
-    assert ET.fromstring(rt.refund_xml({"lines": [], "payments": [], "reference": None, "void": True}).split("?>", 1)[1]).find("beginRtDocAnnulmentSpecial") is not None
+    assert r.find("beginRtDocRefund").get("fiscalSerial") == "STMTE500271" and r.find("printRecRefund").get("unitPrice") == "216"
+    assert ET.fromstring(rt.refund_xml({"lines": SALE["lines"][2:], "payments": [], "reference": None, "void": True})
+                         .split("?>", 1)[1]).find("beginRtDocAnnulmentSpecial") is not None
+    # prova del dispositivo: modello, problemi e aliquote lette
+    st = A.CustomRT("192.168.1.51", {}, http=FakeCustom()).run("status", {})
+    assert st["model"] == "KUBE II-F" and [v["rate"] for v in st["vat_table"]] == ["22", "10", "4", "5"]
+
+
+def test_custom_digest_su_http_vero():
+    """Trasporto reale (http.client) con autenticazione Digest, come il ponte di BluOrderScan."""
+    import hashlib
+    from http.server import BaseHTTPRequestHandler
+    seen = []
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers["Content-Length"])).decode()
+            auth = self.headers.get("Authorization") or ""
+            if not auth.startswith("Digest"):
+                self.send_response(401)
+                self.send_header("WWW-Authenticate", 'Digest realm="KUBE", nonce="abc", qop="auth"')
+                self.end_headers()
+                return
+            f = dict(re.findall(r'(\w+)="?([^",]*)"?', auth))
+            md5 = lambda s: hashlib.md5(s.encode()).hexdigest()  # noqa: E731
+            ok = f["response"] == md5(f"{md5('admin:KUBE:segreta')}:abc:{f['nc']}:{f['cnonce']}:auth:{md5('POST:/xml/printer.htm')}")
+            seen.append((self.headers["Content-Type"], ok, body))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'<response success="true" status="0"></response>')
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        rt = A.CustomRT(f"127.0.0.1:{srv.server_port}", {"username": "admin", "password": "segreta"})
+        rt.send(rt.command("queryPrinterStatus"))
+        assert seen and seen[0][0].startswith("text/plain") and seen[0][1]
+    finally:
+        srv.shutdown()
+
+
+def test_escpos_tabelle_caratteri():
+    """Accenti sulla termica da 80 mm (esperienza di BluOrderScan): PC858 con €, PC850/PC437 per le compatibili che al
+    numero 19 hanno un'altra tabella (es. greca, «più» → «piΩ»), ASCII con l'apostrofo."""
+    riga = {"lines": [{"text": "Piega più colore – €"}]}
+    d = A.escpos(riga, 48, "pc858")
+    assert d.startswith(b"\x1b@\x1bt\x13") and "Piega più colore - €".encode("cp858") in d
+    d = A.escpos(riga, 48, "pc850")
+    assert d.startswith(b"\x1b@\x1bt\x02") and "Piega più colore - EUR".encode("cp850") in d
+    d = A.escpos(riga, 48, "pc437")
+    assert d.startswith(b"\x1b@\x1bt\x00") and "più".encode("cp437") in d and b"EUR" in d
+    d = A.escpos(riga, 48, "ascii")
+    assert b"Piega piu' colore - EUR" in d and all(b < 128 for b in d.split(b"Piega")[1].split(b"\n")[0])
+    # colonne allineate anche con € → EUR (la lunghezza si conta sul testo già convertito)
+    d = A.escpos({"lines": [{"text": "Totale", "right": "12,50 €"}]}, 32, "pc850")
+    assert b"Totale" + b" " * (32 - 6 - 9) + b"12,50 EUR\n" in d
+    # tabella sconosciuta → PC858; la stampante usa l'opzione «charset»
+    assert A.escpos(riga, 48, "boh").startswith(b"\x1b@\x1bt\x13")
 
 
 def test_escpos_e_bilancia():

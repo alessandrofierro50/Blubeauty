@@ -59,6 +59,29 @@ proposto in evidenza. L'interruttore «Mostra tutte le funzioni» riporta al ges
   gestionale macellerie (comandi 4001/4003/4004, già usati sul KUBE II): testo semplice da 32 caratteri, intestazione stampata
   dal registratore, dicitura «NON VALIDO COME DOC. COMMERCIALE». Su Epson il documento non fiscale è da collaudare.
 
+## Registratore Custom e stampante termica: esperienza di BluOrderScan
+Il primo scontrino reale su un Custom KUBE II-F è uscito in BluOrderScan dopo diverse prove; BluBeauty Agent
+(`agent/blubeauty_agent.py`, classe `CustomRT`) usa esattamente lo stesso formato:
+- POST `http://<IP>/xml/printer.htm`, `Content-Type: text/plain`, utente e password Basic o Digest; connessione ritentata
+  3 volte (subito dopo una stampa il registratore rifiuta connessioni per qualche secondo); attesa della risposta 120 s.
+- Scontrino = un solo XML: `printRecItem` con `unitPrice` = importo della **riga** (quantità × prezzo, sconto già dentro) e
+  `IdVat`; la quantità in un `printRecMessage` («2 x 15,00 EUR»), lo sconto in «Sconto 3,00 EUR»; `printRecSubtotal`;
+  `printRecTotal` per pagamento con il **contante ricevuto** per ultimo (il resto lo calcola il registratore);
+  `printRecMessage` «Rif. SCO n/anno»; `endFiscalReceiptCut` con **IdCmd** univoco. Descrizioni ASCII, max 22 caratteri.
+  Gli sconti di documento (promozioni, premi fedeltà) si tolgono dalle righe della stessa aliquota: niente comandi di sconto.
+- Indice IVA: scritto nel dispositivo (`vat_ids`) o **letto dal registratore** (`getVatRate` 1…10); un'aliquota che non c'è
+  blocca l'invio prima di stampare. Codici di pagamento: contanti 1, carta 2 (opzione `payments`).
+- Rifiutato → `resetPrinter` (altrimenti il documento rimasto aperto blocca tutto) e messaggio col codice del manuale
+  (`agent/rt_errors.py`). Risposta persa → si chiede `lastIdCmd` dopo 2, 4, 8 s: se coincide l'esito si registra, se
+  `fpStatus` è 000 il documento non è uscito; **mai una ristampa alla cieca**.
+- Chiusura Z come l'esempio del manuale (`<printZReport description="">`, **senza IdCmd**: con l'IdCmd il KUBE rifiutava
+  tutto dopo la prima chiusura), attesa fino a 300 s, poi 20 s di pausa e `resetPrinter` (il KUBE apre da solo il
+  promemoria «VISITA TECNICA»). Annullo come BluOrderScan; il reso (`beginRtDocRefund`) è ancora da collaudare.
+- **Accenti sulla termica da 80 mm**: opzione «Tabella dei caratteri» della stampante. PC858 (ESC t 19) per le Epson
+  originali (accenti ed €); molte compatibili al numero 19 hanno un'altra tabella (es. greca: «più» stampato «piΩ») e vanno
+  messe su **PC850** (o PC437): accenti sì, € scritto «EUR». «Senza accenti» stampa «piu'». La stampa di prova riporta
+  «àèéìòù ÀÈÉ €» per scegliere quella giusta.
+
 ## Marketing WhatsApp
 - Automatici, ognuno con interruttore e testo modificabile: conferma, promemoria (24 ore prima), disdetta, grazie + richiesta di recensione Google, richiamo dopo N giorni dal servizio (es. ritocco colore), auguri di compleanno, clienti persi.
 - Campagne a segmenti (tutti, inattivi da 60 giorni, compleanno del mese, nuovi clienti) con anteprima sul telefono, personalizzate col nome e con il link di prenotazione. Solo ai clienti con consenso marketing.
