@@ -12,6 +12,7 @@ import base64
 import io
 import os
 from decimal import ROUND_HALF_UP, Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,6 +30,9 @@ DEFAULTS = {
     "header_on_rt": False,   # stampare la nostra intestazione anche sul registratore (di solito la stampa lui)
     "show_vat": True,        # colonna IVA come sul documento commerciale
 }
+TZ = ZoneInfo("Europe/Rome")
+# Righe della ricevuta d'esempio (anteprima e stampa di prova): descrizione, prezzo, quantità
+SAMPLE = [("Piega", "22.00", "1"), ("Colore + piega", "65.00", "1"), ("Shampoo riparatore 250 ml", "12.50", "2")]
 ELECTRONIC = ("carta", "bancomat", "satispay")
 LABELS = {"contanti": "Pagamento contante", "carta": "Pagamento elettronico", "bancomat": "Pagamento elettronico",
           "satispay": "Pagamento elettronico", "buono": "Buono", "buono_pasto": "Buono pasto", "altro": "Altro pagamento"}
@@ -135,7 +139,6 @@ def header_lines(db: Session, cfg: dict, co=None, logo: bool = True) -> list[dic
 def document_receipt(db: Session, d, pays: list, register_name: str = "") -> dict:
     """Ricevuta di uno scontrino/reso della cassa con il layout del documento commerciale."""
     from app.documenti import service as docs
-    from app.agenda.service import local
     cfg = settings(db, d.tenant_id)
     nonfiscal = (d.fiscal or {}).get("nonfiscal")
     rt = (d.fiscal or {}).get("rt") or {}
@@ -171,7 +174,7 @@ def document_receipt(db: Session, d, pays: list, register_name: str = "") -> dic
         L.append({"text": "Resto", "right": _eur(change)})
     L.append({"text": "Importo pagato" if d.doc_type != "RSO" else "Importo rimborsato", "right": _eur(abs(Decimal(str(d.total))))})
     L.append({"type": "line"})
-    when = local(d.created_at).strftime("%d-%m-%Y %H:%M") if d.created_at else d.doc_date.strftime("%d-%m-%Y")
+    when = d.created_at.astimezone(TZ).strftime("%d-%m-%Y %H:%M") if d.created_at else d.doc_date.strftime("%d-%m-%Y")
     num = f"{'RNF' if nonfiscal else d.doc_type} N. {d.number:04d}" if isinstance(d.number, int) else ""
     L.append({"text": when, "right": num})
     if register_name:
@@ -203,17 +206,18 @@ def sample_receipt(db: Session, tenant_id) -> dict:
     from datetime import date, datetime
     from types import SimpleNamespace as NS
 
-    from app.agenda.service import TZ
 
     def line(no, desc, price, qty="1", rate="22", disc=None):
         return NS(line_no=no, description=desc, unit_price_gross=Decimal(price), quantity=Decimal(qty), vat_rate=Decimal(rate),
                   discount1=Decimal(disc) if disc else None, discount2=None, discount3=None, line_total=Decimal(price))
-    lines = [line(1, "Piega", "22.00"), line(2, "Colore + piega", "65.00"), line(3, "Shampoo riparatore 250 ml", "12.50", qty="2")]
-    total = Decimal("112.00")
-    d = NS(tenant_id=tenant_id, fiscal={"nonfiscal": {"reason": "Esempio di stampa"}, "change": "8.00"}, doc_type="SCO", number=12,
-           year=date.today().year, lines=lines, prices_vat_included=True, total=total, vat_total=Decimal("20.20"),
+    lines = [line(i + 1, desc, price, qty=qty) for i, (desc, price, qty) in enumerate(SAMPLE)]
+    total = sum((Decimal(p) * Decimal(q) for _, p, q in SAMPLE), Decimal(0))
+    vat = (total - total / Decimal("1.22")).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    given = (total / 10).to_integral_value(rounding="ROUND_CEILING") * 10
+    d = NS(tenant_id=tenant_id, fiscal={"nonfiscal": {"reason": "Esempio di stampa"}, "change": str(given - total)}, doc_type="SCO", number=12,
+           year=date.today().year, lines=lines, prices_vat_included=True, total=total, vat_total=vat,
            created_at=datetime.now(TZ), doc_date=date.today())
-    pays = [NS(method="contanti", amount=total, tendered=Decimal("120.00"))]
+    pays = [NS(method="contanti", amount=total, tendered=given)]
     return document_receipt(db, d, pays, "Cassa")
 
 

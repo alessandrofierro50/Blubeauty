@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 
 import { appApi, tokens } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
-import { ReceiptLines } from '../salone/Prints'
+import { ReceiptLines } from './ReceiptLines'
 
 const lines = (t: string) => t.split('\n').map((x) => x.trim()).filter(Boolean)
 
