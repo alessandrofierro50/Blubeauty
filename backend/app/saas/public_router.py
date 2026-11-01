@@ -72,8 +72,8 @@ def trial_signup(body: TrialIn, request: Request, db: Session = Depends(get_db))
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             "I termini di utilizzo sono stati aggiornati: ricarica la pagina, rileggili e accettali di nuovo")
     ip = passwords.client_ip(request)
-    passwords.rate_limit(f"trial:{ip}", 3, 3600)
-    passwords.rate_limit(f"trial:{body.email.lower()}", 2, 86400)
+    passwords.rate_limit(f"trial:{ip}", 10, 3600)
+    passwords.rate_limit(f"trial:{body.email.lower()}", 10, 86400)
     passwords.rate_limit("trial:giorno", 50, 86400)
     vat = (body.vat_number or "").replace(" ", "").upper().removeprefix("IT") or None
     if vat and not valid_vat_it(vat):
