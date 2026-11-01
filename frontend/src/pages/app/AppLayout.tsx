@@ -8,6 +8,7 @@ import { ApiError, appApi, tokens } from '../../api'
 import { HEADER_ACTION_ID, Loading, Logo, PlanBadge } from '../../components'
 import { ChangePassword, ForcedChange } from './Passwords'
 import Payment, { PaymentResult } from './Payment'
+import { RenewCard, RenewHeaderButton } from './RenewButton'
 import Subscription from './Subscription'
 
 const ICONS: Record<string, any> = {
@@ -166,6 +167,7 @@ export default function AppLayout() {
           <Group h="100%" px="md" justify="space-between" wrap="nowrap">
             <Group wrap="nowrap"><Logo /><Text fw={600} visibleFrom="sm" truncate>{me.tenant.name}</Text></Group>
             <Group gap="xs" wrap="nowrap">
+              {me.user.role === 'amministratore' && !me.impersonated && <RenewHeaderButton status={status} />}
               <Button variant="subtle" leftSection={<IconKey size={14} />} onClick={() => setPwOpen(true)}>Cambia password</Button>
               <Button variant="subtle" leftSection={<IconLogout size={14} />} onClick={logout}>Esci</Button>
             </Group>
@@ -222,6 +224,7 @@ export default function AppLayout() {
           </Group>
           <Group gap="xs" wrap="nowrap">
             {me.impersonated && <Badge color="orange">Assistenza</Badge>}
+            {me.user.role === 'amministratore' && !me.impersonated && <RenewHeaderButton status={status} />}
             <Menu position="bottom-end">
               <Menu.Target>
                 <UnstyledButton><Group gap={4} wrap="nowrap"><Text size="sm" visibleFrom="md">{me.user.full_name}</Text><IconChevronDown size={14} /></Group></UnstyledButton>
@@ -304,6 +307,7 @@ export default function AppLayout() {
         {banner && <Alert color={banner.level === 'error' ? 'red' : banner.level === 'warning' ? 'yellow' : 'blue'} mb="md">
           {banner.text}{me.user.role === 'amministratore' && banner.renew && !loc.pathname.startsWith('/pagamento') && <> <Anchor size="sm" fw={700} onClick={() => nav('/pagamento')}>Rinnova ora</Anchor></>}
           {me.user.role === 'amministratore' && loc.pathname !== '/abbonamento' && <> <Anchor size="sm" onClick={() => nav('/abbonamento')}>Vedi abbonamento</Anchor></>}</Alert>}
+        {loc.pathname === '/' && me.user.role === 'amministratore' && !me.impersonated && <RenewCard status={status} />}
         <Outlet context={{ me, status, reload: load, simple, setSimple } satisfies AppCtx} />
       </AppShell.Main>
       <Modal opened={pwOpen} onClose={() => setPwOpen(false)} title="Cambia password">
