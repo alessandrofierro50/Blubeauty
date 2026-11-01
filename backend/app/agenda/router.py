@@ -578,6 +578,7 @@ class CheckoutIn(BaseModel):
     lottery_code: str | None = Field(None, max_length=8)
     rt_result: dict | None = None
     reward_id: uuid.UUID | None = None  # premio fedeltà riscattato
+    nonfiscal_reason: str | None = Field(None, max_length=120)  # ricevuta non fiscale al posto dello scontrino
 
 
 @router.post("/appuntamenti/{appt_id}/incassa")
@@ -596,7 +597,8 @@ def checkout(appt_id: uuid.UUID, body: CheckoutIn, ctx: TenantContext = Depends(
         ctx.db, ctx.tenant_id, a, ctx.user.id, register_id=body.register_id,
         payments=[{"method": p.method, "amount": str(p.amount)} for p in body.payments], invoice=body.invoice,
         products=[p.model_dump(mode="json") for p in body.products], discount=body.discount,
-        lottery_code=body.lottery_code, rt_result=body.rt_result, marketing="marketing" in ctx.state.modules, reward_id=body.reward_id)
+        lottery_code=body.lottery_code, rt_result=body.rt_result, marketing="marketing" in ctx.state.modules, reward_id=body.reward_id,
+        nonfiscal_reason=body.nonfiscal_reason)
     from app.pos import service as pos
     return {"appointment": appointment_out(ctx, a, full=True), "receipt": pos.receipt_out(ctx.db, d),
             "change": s(change), "replayed": replay}

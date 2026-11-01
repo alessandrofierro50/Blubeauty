@@ -358,3 +358,22 @@ def test_documento_non_fiscale_su_registratore(tmp_path):
     assert "<beginNonFiscal" in sent[-1] and "65,00" in sent[-1]
     sim = A.SimulatedRT("", {}, state_file=tmp_path / "rt.json").run("rt.nonfiscal", ricevuta)
     assert sim["simulated"] and sim["rows"] == len(texts)
+
+
+def test_logo_sulla_termica_e_non_sul_registratore():
+    import base64
+    raster = base64.b64encode(bytes([0xFF, 0x00] * 3)).decode()  # 16 punti × 3 righe
+    p = {"lines": [{"type": "image", "raster": raster, "width_bytes": 2, "height": 3, "align": "center", "rt_skip": True},
+                   {"text": "Salone Aurora", "align": "center", "rt_skip": True}, {"text": "RICEVUTA NON FISCALE", "align": "center"},
+                   {"text": "Piega", "right": " 22%      22,00"}, {"type": "cut"}]}
+    data = A.escpos(p, 48)
+    assert b"\x1dv0\x00\x02\x00\x03\x00" + bytes([0xFF, 0x00] * 3) in data
+    rows = A.text_rows(p, 32, rt=True)
+    assert rows[0].strip() == "RICEVUTA NON FISCALE" and len(rows) == 2 and rows[1].endswith("22,00")
+
+
+def test_descrizioni_lunghe_sul_registratore_da_57mm():
+    p = {"lines": [{"text": "Trattamento ristrutturante alla cheratina", "right": " 22%      45,00"}]}
+    rows = A.text_rows(p, 32, rt=True)
+    assert all(len(r) <= 32 for r in rows) and rows[-1].endswith("45,00")
+    assert "Trattamento ristrutturante alla cheratina" == " ".join(r.replace("22%", "").replace("45,00", "").strip() for r in rows).strip()

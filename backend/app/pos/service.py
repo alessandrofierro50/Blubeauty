@@ -448,6 +448,11 @@ def create_sale(db: Session, reg: PosRegister, user_id, body: dict) -> tuple[Doc
         raise fail("Cliente da fatturare non valido")
     if not body.get("lines"):
         raise fail("Lo scontrino è vuoto")
+    nonfiscal = (body.get("nonfiscal_reason") or "").strip()[:120]
+    if nonfiscal and party:
+        raise fail("La fattura è già un documento fiscale: niente ricevuta non fiscale")
+    if nonfiscal and (reg.settings or {}).get("nonfiscal_allowed") is False:
+        raise fail("In questa cassa la ricevuta non fiscale al posto dello scontrino è disattivata")
     co = db.scalar(select(Company).order_by(Company.name))
     when = date.fromisoformat(body["date"][:10]) if body.get("date") else date.today()
     customer = party or (db.get(Party, uuid.UUID(str(body["customer_id"]))) if body.get("customer_id") else None) or walk_in_customer(db, reg.tenant_id)
@@ -468,13 +473,18 @@ def create_sale(db: Session, reg: PosRegister, user_id, body: dict) -> tuple[Doc
     pays, change = _payments(total, payments)
     sales.confirm_sale(db, d, user_id, force=True)
     d.fiscal = {**d.fiscal, "change": str(change), "rt": None, "simulated": True}
+    if nonfiscal:  # ricevuta NON fiscale al posto dello scontrino: niente documento commerciale, resta tutto registrato
+        d.fiscal["nonfiscal"] = {"reason": nonfiscal, "by": str(user_id) if user_id else None}
     for p in pays:
         db.add(PosPayment(tenant_id=reg.tenant_id, session_id=s.id, document_id=d.id, method=p["method"], amount=p["amount"],
                           tendered=p.get("tendered"), account_id=None if party else _account(db, reg, p["method"])))
     db.flush()
     if not party:  # documento commerciale sul registratore telematico (o già stampato dalla cassa senza rete)
         from app.periferiche import service as per
-        per.fiscalize(db, reg, d, user_id, local_result=body.get("rt_result"))
+        if nonfiscal:
+            per.print_nonfiscal(db, reg, d, user_id)
+        else:
+            per.fiscalize(db, reg, d, user_id, local_result=body.get("rt_result"))
     if party:  # fattura al banco: già incassata
         from app.scadenzario import service as due
         for inst in db.scalars(select(due.Installment).where(due.Installment.document_id == d.id)):
@@ -510,6 +520,8 @@ def create_return(db: Session, reg: PosRegister, user_id, body: dict) -> Documen
                  attachment_ids=[], print_options={}, reference=(f"Reso scontrino n. {orig.number} del {orig.doc_date.strftime('%d/%m/%Y')}" if orig else body.get("reason")),
                  fiscal={"kind": "annullo" if body.get("void") else "reso", "reason": body.get("reason"),
                          "original": {"number": orig.number, "date": orig.doc_date.isoformat(), "rt": (orig.fiscal or {}).get("rt")} if orig else None})
+    if orig is not None and (orig.fiscal or {}).get("nonfiscal"):  # reso di una ricevuta non fiscale: niente registratore
+        d.fiscal["nonfiscal"] = {"reason": "Reso di una ricevuta non fiscale"}
     db.add(d)
     neg = set()
     if orig is not None:
@@ -535,7 +547,10 @@ def create_return(db: Session, reg: PosRegister, user_id, body: dict) -> Documen
         db.add(DocumentLink(tenant_id=reg.tenant_id, from_id=orig.id, to_id=d.id))
     db.flush()
     from app.periferiche import service as per
-    per.fiscalize(db, reg, d, user_id, local_result=body.get("rt_result"))
+    if (d.fiscal or {}).get("nonfiscal"):
+        per.print_nonfiscal(db, reg, d, user_id)
+    else:
+        per.fiscalize(db, reg, d, user_id, local_result=body.get("rt_result"))
     db.flush()
     return d
 

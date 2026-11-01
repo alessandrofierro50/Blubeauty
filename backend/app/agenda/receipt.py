@@ -57,7 +57,7 @@ def build(db: Session, tenant_id, appt: Appointment, with_marketing: bool = True
     L += [{"type": "line"}, {"text": "TOTALE" if paid else "TOTALE PREVISTO", "right": euro(total), "bold": True}]
     if doc is not None:
         rt = (doc.fiscal or {}).get("rt") or {}
-        what = "Fattura" if doc.doc_type == "FTI" else "Scontrino fiscale"
+        what = "Fattura" if doc.doc_type == "FTI" else "Ricevuta non fiscale" if (doc.fiscal or {}).get("nonfiscal") else "Scontrino fiscale"
         L.append({"text": f"{what} n. {rt.get('number') or doc.number} del {doc.doc_date.strftime('%d/%m/%Y')}"})
     if party and with_marketing:
         from app.marketing import loyalty

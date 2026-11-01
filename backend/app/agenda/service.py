@@ -537,7 +537,8 @@ def move(db: Session, tenant_id, appt: Appointment, start: datetime, staff_id=No
 # ---------------------------------------------------------------------------------------------------------- cassa
 def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id, payments: list[dict],
              invoice: bool = False, products: list[dict] | None = None, discount: Decimal | None = None,
-             lottery_code: str | None = None, rt_result: dict | None = None, marketing: bool = False, reward_id=None):
+             lottery_code: str | None = None, rt_result: dict | None = None, marketing: bool = False, reward_id=None,
+             nonfiscal_reason: str | None = None):
     """Incasso dell'appuntamento dalla cassa: scontrino (documento commerciale sul registratore) o fattura."""
     from app.documenti.models import Document
     from app.pos import service as pos
@@ -582,6 +583,7 @@ def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id,
         "invoice_party_id": str(party.id) if invoice else None,
         "lottery_code": lottery_code,
         "rt_result": rt_result,
+        "nonfiscal_reason": nonfiscal_reason,  # ricevuta non fiscale al posto dello scontrino
     }
     d, change, replay = pos.create_sale(db, reg, user_id, body)
     appt.document_id, appt.status = d.id, "pagato"

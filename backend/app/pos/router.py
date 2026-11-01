@@ -5,7 +5,7 @@ from typing import Literal
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -359,6 +359,7 @@ class SaleIn(BaseModel):
     lines: list[LineIn]
     payments: list[PaymentIn]
     rt_result: dict | None = None  # documento già stampato dall'agent locale (cassa senza rete)
+    nonfiscal_reason: str | None = Field(None, max_length=120)  # ricevuta non fiscale al posto dello scontrino
 
 
 def _dump(m: BaseModel) -> dict:
@@ -451,6 +452,108 @@ def retry_fiscal(doc_id: uuid.UUID, body: FiscalRetryIn, ctx: TenantContext = De
     return pos.receipt_out(ctx.db, d)
 
 
+# ------------------------------------------------------------------------------------------- ricevute: logo e intestazione
+class ReceiptSettingsIn(BaseModel):
+    logo: Literal["azienda", "proprio", "nessuno"] = "azienda"
+    logo_width_mm: int = Field(40, ge=15, le=70)
+    header: list[str] = Field([], max_length=8)
+    footer: list[str] = Field([], max_length=6)
+    header_on_rt: bool = False
+    show_vat: bool = True
+
+
+def _receipt_settings_out(ctx: TenantContext) -> dict:
+    from app.core import media
+    from app.pos import receipts
+    cfg = receipts.settings(ctx.db, ctx.tenant_id)
+    co = receipts.company(ctx.db)
+    return {**cfg, "own_logo_url": media.urls(cfg["logo_file"])["url"] if cfg.get("logo_file") else None,
+            "company_logo_url": media.urls(co.logo_file)["url"] if co and co.logo_file else None,
+            "default_header": receipts.default_header(co),
+            "preview": receipts.for_screen(receipts.sample_receipt(ctx.db, ctx.tenant_id))}
+
+
+@router.get("/ricevute")
+def receipt_settings(ctx: TenantContext = Depends(cashier)):
+    """Logo, intestazione e piede delle ricevute, con un'anteprima d'esempio."""
+    return _receipt_settings_out(ctx)
+
+
+@router.put("/ricevute")
+def save_receipt_settings(body: ReceiptSettingsIn, ctx: TenantContext = Depends(admin)):
+    from app.pos import receipts
+    data = body.model_dump()
+    data["header"] = [x.strip() for x in data["header"] if x.strip()]
+    data["footer"] = [x.strip() for x in data["footer"] if x.strip()]
+    receipts.save_settings(ctx.db, ctx.tenant_id, data)
+    return _receipt_settings_out(ctx)
+
+
+@router.post("/ricevute/logo")
+async def upload_receipt_logo(file: UploadFile = File(...), ctx: TenantContext = Depends(admin)):
+    from app.core import media
+    from app.pos import receipts
+    old = receipts.settings(ctx.db, ctx.tenant_id).get("logo_file")
+    name = media.save_image(await file.read())
+    receipts.save_settings(ctx.db, ctx.tenant_id, {"logo_file": name, "logo": "proprio"})
+    if old:
+        media.delete_image(old)
+    return _receipt_settings_out(ctx)
+
+
+@router.delete("/ricevute/logo")
+def delete_receipt_logo(ctx: TenantContext = Depends(admin)):
+    from app.core import media
+    from app.pos import receipts
+    cfg = receipts.settings(ctx.db, ctx.tenant_id)
+    if cfg.get("logo_file"):
+        media.delete_image(cfg["logo_file"])
+    receipts.save_settings(ctx.db, ctx.tenant_id, {"logo_file": None, "logo": "azienda" if cfg.get("logo") == "proprio" else cfg.get("logo")})
+    return _receipt_settings_out(ctx)
+
+
+@router.get("/ricevute/logo-termica.png")
+def receipt_logo_preview(ctx: TenantContext = Depends(cashier)):
+    """Il logo come uscirà sulla stampante termica (bianco e nero, alla larghezza scelta)."""
+    from fastapi.responses import Response
+    from app.pos import receipts
+    cfg = receipts.settings(ctx.db, ctx.tenant_id)
+    name = receipts.logo_name(ctx.db, cfg)
+    r = receipts.logo_raster(name, cfg["logo_width_mm"]) if name else None
+    if r is None:
+        raise HTTPException(404, "Nessun logo")
+    return Response(receipts.raster_png(r), media_type="image/png")
+
+
+class ReceiptTestIn(BaseModel):
+    register_id: uuid.UUID
+    where: Literal["termica", "registratore"]
+
+
+@router.post("/ricevute/prova")
+def print_receipt_test(body: ReceiptTestIn, ctx: TenantContext = Depends(admin)):
+    """Stampa di prova della ricevuta d'esempio sulla termica o sul registratore della cassa."""
+    from app.periferiche import service as per
+    from app.pos import receipts
+    reg = _register(ctx, body.register_id)
+    dev = per.register_device(ctx.db, reg, "printer" if body.where == "termica" else "rt")
+    if dev is None:
+        raise HTTPException(422, "La cassa non ha una stampante di ricevute" if body.where == "termica" else "La cassa non ha un registratore telematico")
+    j = per.enqueue(ctx.db, dev, "print.text" if body.where == "termica" else "rt.nonfiscal", receipts.sample_receipt(ctx.db, ctx.tenant_id), user_id=ctx.user.id)
+    return {"job_id": str(j.id)}
+
+
+@router.get("/scontrini/{doc_id}/ricevuta")
+def receipt_lines(doc_id: uuid.UUID, ctx: TenantContext = Depends(cashier)):
+    """Righe della ricevuta per la stampa dal computer (stessa grafica della termica)."""
+    from app.periferiche import service as per
+    from app.pos import receipts
+    d = _get(ctx, Document, doc_id)
+    reg = ctx.db.get(PosRegister, d.register_id) if d.register_id else None
+    pays = list(ctx.db.scalars(select(PosPayment).where(PosPayment.document_id == d.id)))
+    return receipts.for_screen(per.text_receipt(ctx.db, d, pays, reg.name if reg else ""))
+
+
 class CourtesyIn(BaseModel):
     where: Literal["termica", "registratore"] | None = None
 
@@ -459,7 +562,6 @@ class CourtesyIn(BaseModel):
 def print_courtesy(doc_id: uuid.UUID, body: CourtesyIn | None = None, ctx: TenantContext = Depends(cashier)):
     """Copia di cortesia (non fiscale) sulla stampante termica della cassa o sul registratore telematico
     (`rt.nonfiscal`, comandi Custom 4001/4003/4004 come BluOrderScan). Senza scelta: termica se c'è, altrimenti registratore."""
-    from app.core.models import Company
     from app.periferiche import service as per
     d = _get(ctx, Document, doc_id)
     reg = ctx.db.get(PosRegister, d.register_id) if d.register_id else None
@@ -472,9 +574,6 @@ def print_courtesy(doc_id: uuid.UUID, body: CourtesyIn | None = None, ctx: Tenan
     if dev is None:
         raise HTTPException(422, "La cassa non ha una stampante di ricevute" if where == "termica" else "La cassa non ha un registratore telematico")
     pays = list(ctx.db.scalars(select(PosPayment).where(PosPayment.document_id == d.id)))
-    co = ctx.db.scalar(select(Company).order_by(Company.name))
-    payload = per.text_receipt(d, co, pays, reg.name)
-    if where == "termica":  # la dicitura per il registratore non serve sulla termica
-        payload["lines"] = [x for x in payload["lines"] if not x.get("rt_only")]
+    payload = per.text_receipt(ctx.db, d, pays, reg.name)
     j = per.enqueue(ctx.db, dev, "print.text" if where == "termica" else "rt.nonfiscal", payload, document_id=d.id, user_id=ctx.user.id)
     return {"job_id": str(j.id), "where": where}

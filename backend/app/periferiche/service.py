@@ -300,7 +300,7 @@ def register_device(db: Session, reg: PosRegister, role: str) -> Device | None:
 
 def fiscalize(db: Session, reg: PosRegister, d: Document, user_id=None, local_result: dict | None = None) -> None:
     """Documento commerciale per scontrini e resi: lavoro per il registratore, oppure esito già stampato dalla cassa senza rete."""
-    if d.doc_type not in ("SCO", "RSO"):
+    if d.doc_type not in ("SCO", "RSO") or (d.fiscal or {}).get("nonfiscal"):
         return
     rt = register_device(db, reg, "rt")
     if rt is None:
@@ -319,6 +319,20 @@ def fiscalize(db: Session, reg: PosRegister, d: Document, user_id=None, local_re
     _mirror(db, job)
 
 
+def print_nonfiscal(db: Session, reg: PosRegister, d: Document, user_id=None) -> DeviceJob | None:
+    """Ricevuta NON fiscale al posto dello scontrino: sul registratore come documento non fiscale (comandi Custom
+    4001/4003/4004, come BluOrderScan), altrimenti sulla stampante termica; senza periferiche la stampa la cassa."""
+    pays = list(db.scalars(select(PosPayment).where(PosPayment.document_id == d.id)))
+    payload = text_receipt(db, d, pays, reg.name)
+    dev = register_device(db, reg, "rt")
+    kind = "rt.nonfiscal"
+    if dev is None:
+        dev, kind = register_device(db, reg, "printer"), "print.text"
+    if dev is None:
+        return None
+    return enqueue(db, dev, kind, payload, document_id=d.id, user_id=user_id)
+
+
 def close_fiscal_day(db: Session, reg: PosRegister, s: PosSession, user_id=None) -> DeviceJob | None:
     rt = register_device(db, reg, "rt")
     if rt is None or (reg.settings or {}).get("z_on_close") is False:
@@ -326,44 +340,11 @@ def close_fiscal_day(db: Session, reg: PosRegister, s: PosSession, user_id=None)
     return enqueue(db, rt, "rt.z", {}, session_id=s.id, user_id=user_id)
 
 
-def text_receipt(d: Document, company, pays: list[PosPayment], register_name: str = "") -> dict:
-    """Ricevuta (copia) di cortesia nel formato neutro dell'agent: `print.text` sulla termica o `rt.nonfiscal` sul
-    registratore. Sul registratore l'intestazione si salta (`rt_skip`: la stampa lui) e in fondo c'è la dicitura di
-    BluOrderScan «NON VALIDO COME DOC. COMMERCIALE»."""
-    L = []
-    if company:
-        L += [{"text": company.name, "align": "center", "bold": True, "size": 2, "rt_skip": True},
-              {"text": " ".join(x for x in [company.address, company.zip_code, company.city] if x), "align": "center", "rt_skip": True}]
-        if company.vat_number:
-            L.append({"text": f"P.IVA {company.vat_number}", "align": "center", "rt_skip": True})
-    title = {"SCO": "COPIA DI CORTESIA", "RSO": "DOCUMENTO DI RESO", "FTI": f"FATTURA N. {d.number}/{d.year}"}.get(d.doc_type, d.doc_type)
-    L += [{"type": "line", "rt_skip": True}, {"text": title, "align": "center", "bold": True}]
-    if d.doc_type == "SCO":
-        L.append({"text": "non valida ai fini fiscali", "align": "center", "rt_skip": True})
-    L.append({"type": "line"})
-    for ln in sorted(d.lines, key=lambda x: x.line_no):
-        amount = docs.gross_amount(ln) if d.prices_vat_included else _d(ln.line_total)
-        L.append({"text": ln.description, "right": _s(amount).replace(".", ",")})
-        if _d(ln.quantity) != 1:
-            L.append({"text": f"  {_d(ln.quantity).normalize():f} x {_s(_d(ln.unit_price_gross)).replace('.', ',')}"})
-    L += [{"type": "line"}, {"text": "TOTALE EURO", "right": _s(_d(d.total)).replace(".", ","), "bold": True, "size": 2}]
-    change = Decimal((d.fiscal or {}).get("change") or 0)
-    for p in pays:
-        L.append({"text": {"contanti": "Contanti", "carta": "Carta", "bancomat": "Bancomat"}.get(p.method, p.method.capitalize()),
-                  "right": _s(abs(_d(p.tendered if p.tendered is not None else p.amount))).replace(".", ",")})
-    if change > 0:
-        L.append({"text": "Resto", "right": _s(change).replace(".", ",")})
-    rt = (d.fiscal or {}).get("rt") or {}
-    L.append({"type": "line"})
-    if rt.get("status") == "emesso":
-        L.append({"text": f"Documento commerciale {rt.get('z')}-{rt.get('number')}", "align": "center"})
-    L.append({"text": f"{register_name} n. {d.number}  {d.doc_date.strftime('%d/%m/%Y')}", "align": "center"})
-    if d.number:
-        L.append({"type": "barcode", "data": f"S{d.year % 100:02d}{d.number:07d}", "align": "center", "rt_skip": True})
-    L += [{"text": "Grazie e arrivederci", "align": "center"},
-          {"text": "NON VALIDO COME DOC. COMMERCIALE", "align": "center", "rt_text": "NON VALIDO COME DOC. COMMERCIALE", "rt_only": True},
-          {"type": "cut"}]
-    return {"lines": L}
+def text_receipt(db: Session, d: Document, pays: list[PosPayment], register_name: str = "") -> dict:
+    """Ricevuta (copia di cortesia, ricevuta non fiscale, reso) con il layout del documento commerciale, il logo e
+    l'intestazione delle impostazioni «Ricevute» (app/pos/receipts.py)."""
+    from app.pos import receipts
+    return receipts.document_receipt(db, d, pays, register_name)
 
 
 def mark_agents_seen(db: Session, agent_ids: list[uuid.UUID]) -> None:

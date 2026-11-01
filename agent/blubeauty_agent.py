@@ -133,7 +133,7 @@ def text_rows(p: dict, width: int, rt: bool = False) -> list[str]:
     rows = []
     for ln in p.get("lines", []):
         t = ln.get("type", "text")
-        if t == "cut" or (rt and ln.get("rt_skip")):
+        if t in ("cut", "image") or (rt and ln.get("rt_skip")):
             continue
         if t == "feed":
             if not rt:
@@ -148,9 +148,20 @@ def text_rows(p: dict, width: int, rt: bool = False) -> list[str]:
             text = str((ln.get("rt_text") if rt else None) or ln.get("text", ""))
             right = str(ln["right"]) if ln.get("right") else ""
             if rt:
-                text, right = rt_clean(text), rt_clean(right, 12)
+                # a destra si tengono gli spazi (colonne IVA e prezzo allineate), al massimo metà riga
+                import unicodedata
+                right = unicodedata.normalize("NFKD", right.replace("€", "EUR")).encode("ascii", "ignore").decode()
+                right = re.sub(r"[^\x20-\x7E]", " ", right).rstrip()[-(width // 2 + 2):]
+                text = rt_clean(text)
             if right:
                 room = width - len(right) - 1
+                if rt and len(text) > room:  # registratore (57 mm = 32 caratteri): la descrizione lunga va a capo
+                    parts = textwrap.wrap(text, width, break_long_words=True) or [""]
+                    rows += parts[:-1]
+                    text = parts[-1]
+                    if len(text) > room:
+                        rows.append(text)
+                        text = ""
                 rows.append(text[:room].ljust(width - len(right)) + right)
                 continue
             parts = textwrap.wrap(text, width, break_long_words=True) if rt else [text[:width]]
@@ -840,6 +851,16 @@ def escpos(p: dict, width: int = 48, charset: str = "pc858") -> bytes:
             out += ESC + b"a\x00" + ("-" * width).encode("ascii") + b"\n"
             continue
         out += ESC + b"a" + bytes([align.get(ln.get("align", "left"), 0)])
+        if t == "image":  # logo già convertito dal gestionale in punti bianco/nero (GS v 0, una riga = width_bytes byte)
+            import base64
+            data = base64.b64decode(ln.get("raster") or "")
+            wb, h = int(ln.get("width_bytes") or 0), int(ln.get("height") or 0)
+            if wb and h and len(data) >= wb * h:
+                for y in range(0, h, 128):  # a fasce: alcune compatibili non accettano immagini alte in un solo comando
+                    rows = min(128, h - y)
+                    out += GS + b"v0\x00" + bytes([wb % 256, wb // 256, rows % 256, rows // 256]) + data[y * wb:(y + rows) * wb]
+                out += b"\n"
+            continue
         if t == "barcode":
             data = str(ln.get("data", "")).encode("ascii", "ignore")
             out += GS + b"h\x50" + GS + b"w\x02" + GS + b"H\x02" + GS + b"k\x49" + bytes([len(data) + 2]) + b"{B" + data + b"\n"
