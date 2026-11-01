@@ -216,7 +216,7 @@ function Done({ title, sub, children, onClose }: { title: string; sub: string; c
   )
 }
 
-export function SellVoucher({ onClose, onDone, purchaser }: { onClose: () => void; onDone?: () => void; purchaser?: any }) {
+export function SellVoucher({ onClose, onDone, purchaser, registerId }: { onClose: () => void; onDone?: () => void; purchaser?: any; registerId?: string }) {
   const [kind, setKind] = useState<'importo' | 'servizio'>('importo')
   const [amount, setAmount] = useState<number | ''>(50)
   const [services, setServices] = useState<any[]>([])
@@ -238,7 +238,7 @@ export function SellVoucher({ onClose, onDone, purchaser }: { onClose: () => voi
     setBusy(method)
     try {
       const r = await sellWithRegister(`${PP}/buoni`, {
-        client_uuid: cu, kind, amount: kind === 'importo' ? value.toFixed(2) : null, service_id: kind === 'servizio' ? serviceId : null,
+        client_uuid: cu, register_id: registerId ?? null, kind, amount: kind === 'importo' ? value.toFixed(2) : null, service_id: kind === 'servizio' ? serviceId : null,
         purchaser_id: buyer?.id ?? null, beneficiary_id: forClient?.id ?? null, beneficiary_name: forClient ? null : forName || null, message: message || null, months: months === '0' ? null : Number(months),
         payments: [{ method, amount: value.toFixed(2) }],
       })
@@ -283,7 +283,7 @@ export function SellVoucher({ onClose, onDone, purchaser }: { onClose: () => voi
 }
 
 // --------------------------------------------------------------------------------------------------------- pacchetti
-export function SellPackage({ onClose, onDone, client }: { onClose: () => void; onDone?: () => void; client?: any }) {
+export function SellPackage({ onClose, onDone, client, registerId }: { onClose: () => void; onDone?: () => void; client?: any; registerId?: string }) {
   const [pkgs, setPkgs] = useState<any[] | null>(null)
   const [who, setWho] = useState<any>(client ?? null)
   const [pid, setPid] = useState<string | null>(null)
@@ -296,7 +296,7 @@ export function SellPackage({ onClose, onDone, client }: { onClose: () => void; 
     if (!p || !who) return
     setBusy(method)
     try {
-      const r = await sellWithRegister(`${PP}/pacchetti/${p.id}/vendi`, { client_uuid: cu, party_id: who.id, payments: [{ method, amount: p.price }] })
+      const r = await sellWithRegister(`${PP}/pacchetti/${p.id}/vendi`, { client_uuid: cu, register_id: registerId ?? null, party_id: who.id, payments: [{ method, amount: p.price }] })
       setDone(r); onDone?.()
     } catch (e) { notifyError(e) } finally { setBusy(null) }
   }

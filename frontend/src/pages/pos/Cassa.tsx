@@ -3,13 +3,13 @@
 // Funziona anche senza rete: catalogo in memoria locale e scontrini in coda, inviati appena torna la connessione.
 
 import {
-  ActionIcon, Alert, Badge, Box, Button, Center, Divider, Group, Kbd, Loader, Modal, NumberInput, Paper, ScrollArea, SegmentedControl,
+  ActionIcon, Alert, Badge, Box, Button, Center, Divider, Group, Kbd, Loader, Menu, Modal, NumberInput, Paper, ScrollArea, SegmentedControl,
   Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Title, Tooltip, UnstyledButton,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import {
   IconArrowBackUp, IconArrowLeft, IconBackspace, IconCash, IconCloudOff, IconCreditCard, IconDeviceDesktop, IconDiscount, IconDoorExit, IconFileInvoice,
-  IconLock, IconMinus, IconPercentage, IconPlus, IconPrinter, IconReceipt, IconRefresh, IconSearch, IconTrash, IconUser, IconX,
+  IconGift, IconLock, IconMinus, IconPackage, IconPercentage, IconPlus, IconPrinter, IconReceipt, IconRefresh, IconSearch, IconTrash, IconUser, IconX,
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -19,6 +19,7 @@ import { Logo, notifyError } from '../../components'
 import { PRINT_CSS, ReceiptPrint, SessionPrint } from './Receipt'
 import { computePromos, promoLabel } from './promos'
 import { DisplayState, displayChannel } from './Display'
+import { SellPackage, SellVoucher } from '../salone/Prepaid'
 import {
   CartLine, CatItem, Catalog, Dept, METHODS, P, Pending, Periph, Resolved, buildIndex, localAgent, rtPayload, cartCents, catalogKey, centsStr, euro, isNetworkError,
   lineCents, local, methodLabel, outboxKey, parseAmount, parseNum, qtyFmt, resolveLocal, toCents, uuid4,
@@ -212,7 +213,7 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
   const [refundMode, setRefundMode] = useState(false)
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [variantOf, setVariantOf] = useState<{ item: CatItem; quantity?: number } | null>(null)
-  const [modal, setModal] = useState<null | 'pay' | 'search' | 'customer' | 'returns' | 'receipts' | 'move' | 'close' | 'outbox'>(null)
+  const [modal, setModal] = useState<null | 'pay' | 'search' | 'customer' | 'returns' | 'receipts' | 'move' | 'close' | 'outbox' | 'buono' | 'pacchetto'>(null)
   const [last, setLast] = useState<any>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   // promozioni di cassa (3x2, N-esimo pezzo, soglia): calcolate qui per il totale, ricalcolate dal server che fa fede
@@ -451,12 +452,13 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
     }
   }
 
-  async function pay(payments: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null = null) {
+  async function pay(payments: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null = null, voucherCode: string | null = null) {
     const paid = payments.reduce((a, p) => a + p.amount, 0)
     const body: any = {
       client_uuid: uuid4(), session_id: session.id, lines: lines.map(lineBody), lottery_code: nonfiscal ? null : lottery, nonfiscal_reason: nonfiscal,
       payments: payments.map((p) => ({ method: p.method, amount: centsStr(p.amount) })),
       customer_id: customer && !invoice ? customer.id : null, invoice_party_id: customer && invoice ? customer.id : null,
+      voucher_code: voucherCode,
     }
     const rt = !body.invoice_party_id && !nonfiscal ? rtPayload(cat, lines, promoLines, payments, lottery, (l) => lineBody(l).description) : undefined
     if (await submit('vendita', body, total, paid - total, rt)) { clearCart(); setModal(null) }
@@ -487,6 +489,13 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
             onClick={() => window.open(`/cassa/${reg.id}/display`, `display-${reg.id}`, 'popup,width=1024,height=600')}>Display</Button></Tooltip>
           {hasRt && <Tooltip label="Stampa sul registratore la copia non fiscale dell'ultimo scontrino"><Button size="xs" variant="subtle" color="white"
             leftSection={<IconPrinter size={16} />} onClick={courtesyCopy}>Copia cortesia <Kbd ml={4} size="xs">F1</Kbd></Button></Tooltip>}
+          {online && <Menu position="bottom-end">
+            <Menu.Target><Button size="xs" variant="subtle" color="white" leftSection={<IconGift size={16} />} data-testid="cassa-prepagati">Buoni e pacchetti</Button></Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<IconGift size={16} />} onClick={() => setModal('buono')}>Vendi un buono regalo</Menu.Item>
+              <Menu.Item leftSection={<IconPackage size={16} />} onClick={() => setModal('pacchetto')}>Vendi un pacchetto o abbonamento</Menu.Item>
+            </Menu.Dropdown>
+          </Menu>}
           <Button size="xs" variant="subtle" color="white" leftSection={<IconReceipt size={16} />} onClick={() => setModal('receipts')}>Scontrini</Button>
           <Button size="xs" variant="subtle" color="white" leftSection={<IconCash size={16} />} onClick={() => setModal('move')}>Prelievi <Kbd ml={4} size="xs">F10</Kbd></Button>
           <Button size="xs" variant="subtle" color="white" leftSection={<IconLock size={16} />} onClick={() => setModal('close')}>Chiusura</Button>
@@ -615,6 +624,8 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
       </Modal>
       {modal === 'pay' && !refundMode && <PayModal total={total} invoice={invoice ? customer : null} lottery={!!cat.settings?.lottery && !invoice}
         nonfiscalAllowed={!invoice && reg.settings?.nonfiscal_allowed !== false && online} onClose={() => setModal(null)} onPay={pay} />}
+      {modal === 'buono' && <SellVoucher registerId={reg.id} purchaser={customer ?? undefined} onClose={() => setModal(null)} />}
+      {modal === 'pacchetto' && <SellPackage registerId={reg.id} client={customer ?? undefined} onClose={() => setModal(null)} />}
       {modal === 'pay' && refundMode && <RefundModal total={total} onClose={() => setModal(null)} onRefund={refundCart} />}
       {modal === 'search' && <SearchModal cat={cat} onClose={() => setModal(null)} onPick={(it) => { addItem({ item: it }, mult ?? undefined); setMult(null); setModal(null) }} />}
       {modal === 'customer' && <CustomerModal current={customer} invoice={invoice} onClose={() => setModal(null)} online={online}
@@ -738,8 +749,12 @@ const NONFISCAL_REASONS = ['Utilizzo di un buono regalo già pagato', 'Seduta di
 
 function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }: {
   total: number; invoice: any; lottery: boolean; nonfiscalAllowed: boolean; onClose: () => void
-  onPay: (p: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null) => Promise<void>
+  onPay: (p: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null, voucherCode: string | null) => Promise<void>
 }) {
+  // buono regalo multiuso: si scala dal credito, lo scontrino si emette ora pagato «con buono regalo» (non è un nuovo incasso)
+  const [voucher, setVoucher] = useState<any>(null)
+  const [askVoucher, setAskVoucher] = useState(false)
+  const [vcode, setVcode] = useState('')
   const [doc, setDoc] = useState<'scontrino' | 'ricevuta'>('scontrino')
   const [reason, setReason] = useState(NONFISCAL_REASONS[0])
   const [other, setOther] = useState('')
@@ -761,7 +776,17 @@ function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }:
     setPays((x) => [...x, { method, amount: c }])
     setAmount('')
   }
-  const confirm = async () => { if (!valid || busy) return; setBusy(true); await onPay(pays, lot ? lot.toUpperCase() : null, nonfiscal); setBusy(false) }
+  const confirm = async () => { if (!valid || busy) return; setBusy(true); await onPay(pays, lot ? lot.toUpperCase() : null, nonfiscal, pays.some((p) => p.method === 'buono_regalo') ? voucher?.code ?? null : null); setBusy(false) }
+  const useVoucher = async () => {
+    try {
+      const v = await appApi(`/api/prepagati/buoni/codice/${encodeURIComponent(vcode.trim())}`)
+      if (v.status !== 'attivo' || Number(v.balance) <= 0) throw new Error(`Il buono ${v.code} non è utilizzabile (${v.status})`)
+      if (v.fiscal_mode !== 'multiuso') throw new Error(`Il buono ${v.code} è monouso: lo scontrino è già stato fatto alla vendita, usa la ricevuta non fiscale`)
+      const c = Math.min(residual, toCents(Number(v.balance)))
+      setVoucher(v); setDoc('scontrino'); setAskVoucher(false); setVcode('')
+      setPays((x) => [...x.filter((p) => p.method !== 'buono_regalo'), { method: 'buono_regalo', amount: c }])
+    } catch (e) { notifyError(e) }
+  }
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && valid) { e.preventDefault(); confirm() }
@@ -788,6 +813,13 @@ function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }:
             <Button variant="light" color="green" onClick={() => add('contanti', residual)}>Contanti esatti</Button>
             {notes.map((n) => <Button key={n} variant="light" color="green" onClick={() => add('contanti', n)}>{euro(n)}</Button>)}
           </Group>
+          {!voucher && (askVoucher ? (
+            <Group mt="sm" align="flex-end">
+              <TextInput style={{ flex: 1 }} label="Codice del buono regalo" placeholder="BR-XXXX-XXXX (o leggilo col lettore)" value={vcode} data-autofocus data-testid="cassa-codice-buono"
+                onChange={(e) => setVcode(e.currentTarget.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && vcode.trim()) { e.preventDefault(); e.stopPropagation(); useVoucher() } }} />
+              <Button color="grape" disabled={!vcode.trim()} onClick={useVoucher}>Usa il buono</Button>
+            </Group>
+          ) : !invoice && <Button mt="sm" variant="light" color="grape" leftSection={<IconGift size={18} />} onClick={() => setAskVoucher(true)} data-testid="cassa-paga-buono">Paga con un buono regalo</Button>)}
           <SimpleGrid cols={4} mt="sm" spacing={6}>
             {METHODS.map((m) => (
               <Button key={m.value} size="md" variant={m.value === 'contanti' ? 'filled' : 'light'} color={m.value === 'contanti' ? 'green' : 'blue'}
@@ -801,14 +833,16 @@ function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }:
         <Table mt="md" fz="md">
           <Table.Tbody>
             {pays.map((p, i) => (
-              <Table.Tr key={i}><Table.Td>{methodLabel(p.method)}</Table.Td><Table.Td ta="right" fw={600}>{euro(p.amount)}</Table.Td>
-                <Table.Td w={40}><ActionIcon variant="subtle" color="red" onClick={() => setPays(pays.filter((_, n) => n !== i))}><IconTrash size={16} /></ActionIcon></Table.Td></Table.Tr>
+              <Table.Tr key={i}><Table.Td>{p.method === 'buono_regalo' ? `Buono regalo ${voucher?.code ?? ''}` : methodLabel(p.method)}</Table.Td><Table.Td ta="right" fw={600}>{euro(p.amount)}</Table.Td>
+                <Table.Td w={40}><ActionIcon variant="subtle" color="red" onClick={() => { if (p.method === 'buono_regalo') setVoucher(null); setPays(pays.filter((_, n) => n !== i)) }}><IconTrash size={16} /></ActionIcon></Table.Td></Table.Tr>
             ))}
           </Table.Tbody>
         </Table>
       )}
       {change > 0 && cash < change && <Alert color="red" mt="sm">Il resto si dà solo sul contante: togli l'eccedenza su carta o buoni.</Alert>}
-      {nonfiscalAllowed && (
+      {voucher && <Alert color="grape" mt="sm" icon={<IconGift />}>Buono {voucher.code}: dopo questo scontrino restano {euro(toCents(Number(voucher.balance)) - (pays.find((p) => p.method === 'buono_regalo')?.amount ?? 0))}.
+        Lo scontrino è pagato «con buono regalo» (già incassato alla vendita); se resta credito esce anche la ricevuta del saldo.</Alert>}
+      {nonfiscalAllowed && !voucher && (
         <Paper withBorder p="sm" mt="md" radius="md">
           <SegmentedControl fullWidth size="md" value={doc} onChange={(v) => setDoc(v as any)} data-testid="tipo-documento"
             data={[{ value: 'scontrino', label: 'Scontrino fiscale' }, { value: 'ricevuta', label: 'Ricevuta non fiscale' }]} />

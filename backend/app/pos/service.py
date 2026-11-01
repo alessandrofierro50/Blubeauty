@@ -473,6 +473,13 @@ def create_sale(db: Session, reg: PosRegister, user_id, body: dict) -> tuple[Doc
         if paid != total and abs(paid - total) <= Decimal("0.05") and not any(p.get("method") == CASH for p in payments):
             payments = [*payments[:-1], {**payments[-1], "amount": str(_q(payments[-1]["amount"]) + total - paid)}]
     pays, change = _payments(total, payments)
+    voucher_paid = sum((p["amount"] for p in pays if p["method"] == "buono_regalo"), Decimal(0))
+    bank_voucher = None
+    if voucher_paid > 0 and not body.get("voucher_managed"):  # l'incasso dell'appuntamento lo gestisce da sé (app.prepagati)
+        from app.prepagati import service as prepaid
+        if nonfiscal or party:
+            raise fail("Il buono regalo multiuso si usa con lo scontrino fiscale")
+        bank_voucher = prepaid.check_bank_voucher(db, body.get("voucher_code"), voucher_paid)
     sales.confirm_sale(db, d, user_id, force=True)
     d.fiscal = {**d.fiscal, "change": str(change), "rt": None, "simulated": True}
     if body.get("prepaid"):  # buono regalo e pacchetti usati: riepilogo per le ricevute (residuo, sedute rimaste)
@@ -485,12 +492,20 @@ def create_sale(db: Session, reg: PosRegister, user_id, body: dict) -> tuple[Doc
         db.add(PosPayment(tenant_id=reg.tenant_id, session_id=s.id, document_id=d.id, method=p["method"], amount=p["amount"],
                           tendered=p.get("tendered"), account_id=None if party or p["method"] == "buono_regalo" else _account(db, reg, p["method"])))
     db.flush()
+    if bank_voucher is not None:  # buono scalato e riepilogo per la ricevuta (credito residuo)
+        prepaid.use_voucher(db, bank_voucher, voucher_paid, document_id=d.id, user_id=user_id)
+        d.fiscal = {**d.fiscal, "prepaid": {"packages": [], "voucher": {
+            "code": bank_voucher.code, "used": str(voucher_paid), "left": str(bank_voucher.balance), "mode": "multiuso",
+            "expires_on": bank_voucher.expires_on.isoformat() if bank_voucher.expires_on else None}}}
+        db.flush()
     if not party:  # documento commerciale sul registratore telematico (o già stampato dalla cassa senza rete)
         from app.periferiche import service as per
         if nonfiscal:
             per.print_nonfiscal(db, reg, d, user_id)
         else:
             per.fiscalize(db, reg, d, user_id, local_result=body.get("rt_result"))
+    if bank_voucher is not None:
+        prepaid.after_voucher_use(db, reg, bank_voucher, voucher_paid, d.id, user_id, customer if body.get("customer_id") else None)
     if party:  # fattura al banco: già incassata
         from app.scadenzario import service as due
         for inst in db.scalars(select(due.Installment).where(due.Installment.document_id == d.id)):

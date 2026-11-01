@@ -69,7 +69,7 @@ def put_settings(body: SettingsIn, ctx: TenantContext = Depends(agenda_admin)):
 
 
 def automation_out(a: Automation, modules: list[str]) -> dict:
-    needs = "agenda" if a.kind in msg.AGENDA_KINDS else "marketing"
+    needs = "agenda" if a.kind in msg.AGENDA_KINDS else "pos" if a.kind in msg.PREPAID_KINDS else "marketing"
     return {"id": str(a.id), "kind": a.kind, "label": msg.KIND_LABEL[a.kind], "enabled": a.enabled, "channel": a.channel,
             "offset": a.offset, "template": a.template, "module": needs, "available": needs in modules}
 
@@ -90,7 +90,7 @@ def update_automation(auto_id: uuid.UUID, body: AutomationIn, ctx: TenantContext
     a = ctx.db.get(Automation, auto_id)
     if a is None:
         raise HTTPException(404, "Non trovato")
-    if a.kind not in msg.AGENDA_KINDS and "marketing" not in ctx.state.modules:
+    if a.kind not in msg.AGENDA_KINDS + msg.PREPAID_KINDS and "marketing" not in ctx.state.modules:
         raise HTTPException(403, {"code": "modulo_non_incluso", "module": "marketing",
                                   "message": "I messaggi di marketing sono nel pacchetto Salone."})
     a.enabled, a.template = body.enabled, body.template

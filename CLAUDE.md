@@ -53,10 +53,20 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   da `service.save_absence`): la risposta elenca gli appuntamenti già presi da spostare (`absence_conflicts`), con
   «Avvisa» su WhatsApp (wa.me) e «Apri» in agenda. Test: `tests/test_turni.py`.
 
-## Buoni regalo e pacchetti di sedute (`app/prepagati/`, pagina `/buoni`; migrazione `0027_prepagati`)
+## Buoni regalo e pacchetti di sedute (`app/prepagati/`, pagina `/buoni`; migrazioni `0027_prepagati`, `0028_buoni_multiuso`)
 - `service.py` è l'unico punto che scrive buoni (`gift_vouchers` + `gift_voucher_moves`), listino pacchetti (`service_packages`),
   pacchetti venduti (`client_packages`) e sedute usate (`client_package_uses`). Ricerca e regole fiscali:
-  `docs/BUONI-PACCHETTI-CONCORRENTI.md` (buono «monouso»: scontrino alla VENDITA, niente scontrino all'utilizzo).
+  `docs/BUONI-PACCHETTI-CONCORRENTI.md`.
+- **Buono MULTIUSO (predefinito, scelta del titolare del 2026-11-01; impostazione `prepagati.voucher_mode`, `GiftVoucher.fiscal_mode`):**
+  alla vendita ricevuta NON fiscale con codice a barre (`fiscal.voucher_sale`, esclusa da `bi_sales`), intestabile a una cliente in
+  anagrafica (`beneficiary_party_id`: compare nella sua scheda e all'incasso con un tocco). All'utilizzo **scontrino per l'intero
+  importo** pagato con `buono_regalo` (nessun conto, non è un nuovo incasso; RT Custom tipo 3, Epson (3,2) da verificare) più la
+  parte pagata dalla cliente, poi ricevuta non fiscale del **saldo residuo** (`print_balance`). Monouso: scontrino alla vendita,
+  all'utilizzo ricevuta non fiscale. Cassa al banco: «Paga con un buono regalo» manda `voucher_code`; il server lo controlla
+  (`check_bank_voucher`) e lo scala (`create_sale`, `voucher_managed` per l'incasso dell'appuntamento). Menu «Buoni e pacchetti».
+- **Pacchetti/abbonamenti:** scontrino alla vendita; a ogni seduta coperta ricevuta non fiscale con «seduta N di M».
+- **WhatsApp** (automatici di servizio, `marketing.PREPAID_KINDS`, modulo pos): buono ricevuto, saldo del buono, pacchetto
+  acquistato, seduta scalata, buono/pacchetto in scadenza (job 10:07, 30 giorni prima). `prepagati.service.notify` non blocca mai la vendita.
 - Vendita (buono a importo o per un servizio, pacchetto) = `pos.create_sale` con `no_promos` (niente promozioni di cassa).
 - Incasso dell'appuntamento (`agenda.service.checkout`, `plan_checkout`/`apply_plan`): prima le sedute coperte da un pacchetto
   (prezzo 0), poi sconti e premio, poi il buono (prima servizi, poi prodotti); scontrino solo per la differenza; se è tutto

@@ -638,13 +638,18 @@ def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id,
         "lottery_code": lottery_code,
         "rt_result": rt_result,
         "nonfiscal_reason": nonfiscal_reason,  # ricevuta non fiscale al posto dello scontrino
+        "voucher_managed": True,  # il buono lo scala apply_plan
         "prepaid": prepaid.summary(plan) if (plan["covered"] or plan["voucher_amount"] > 0) else None,
     }
     d, change, replay = pos.create_sale(db, reg, user_id, body)
     if not replay:
         prepaid.apply_plan(db, plan, appt, d.id, user_id)
-        if plan["voucher"] is not None and plan["voucher_amount"] > 0 and plan["voucher"].balance > 0 and not covered_all:
-            prepaid.print_balance(db, reg, plan["voucher"], plan["voucher_amount"], user_id)  # ricevuta del saldo residuo
+        if plan["voucher"] is not None and plan["voucher_amount"] > 0:
+            v = plan["voucher"]
+            if v.balance > 0 and not covered_all:
+                prepaid.print_balance(db, reg, v, plan["voucher_amount"], user_id)  # ricevuta del saldo residuo
+            prepaid.notify(db, tenant_id, "buono_saldo", prepaid.voucher_party(db, v, party), prepaid.voucher_values(db, v, plan["voucher_amount"]),
+                           dedupe_key=f"buono_saldo:{d.id}")
     appt.document_id, appt.status = d.id, "pagato"
     if party is not None and not replay and marketing:
         before = loyalty.balance(db, party.id)

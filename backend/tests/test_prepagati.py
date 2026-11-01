@@ -79,6 +79,11 @@ def test_buono_multiuso_venduto_e_usato_in_piu_volte(client, admin_headers):
     det = client.get(f"{PP}/buoni/{v['id']}", headers=h).json()
     assert det["balance"] == "0.00" and det["status"] == "esaurito" and [m["kind"] for m in det["moves"]] == ["emissione", "utilizzo", "utilizzo"]
     assert client.get(f"{AG}/clienti/{giulia['id']}", headers=h).json()["loyalty_points"] == 27
+    msgs = client.get(f"{AG}/clienti/{giulia['id']}", headers=h).json()["messages"]
+    assert [m["kind"] for m in msgs if m["kind"].startswith("buono")].count("buono_saldo") == 2
+    rec_msg = next(m for m in msgs if m["kind"] == "buono_ricevuto")
+    assert v["code"] in rec_msg["body"] and "100,00 €" in rec_msg["body"]
+    assert any("ti restano 35,00 €" in m["body"] for m in msgs if m["kind"] == "buono_saldo")
     # buono esaurito, codice sbagliato, annullo
     a3 = book(client, h, laura, c["piega"], "17:00", c["giulia"]).json()
     assert client.post(f"{AG}/appuntamenti/{a3['id']}/incassa", headers=h, json={"register_id": reg["id"], "voucher_code": v["code"],
@@ -157,6 +162,8 @@ def test_pacchetto_di_sedute_a_scalare(client, admin_headers):
     client.post(f"{AG}/appuntamenti/{a3['id']}/incassa", headers=h, json={"register_id": reg["id"], "payments": pay("contanti", "0")})
     sold = client.get(f"{PP}/clienti/{laura['id']}", headers=h).json()["packages"][0]
     assert sold["remaining"] == 0 and sold["status"] == "esaurito"
+    kinds = [m["kind"] for m in client.get(f"{AG}/clienti/{laura['id']}", headers=h).json()["messages"]]
+    assert kinds.count("pacchetto_acquistato") == 1 and kinds.count("pacchetto_seduta") == 3  # WhatsApp a ogni seduta
     # senza sedute: si paga normalmente
     a4 = book(client, h, laura, c["presso"], "10:00", c["sara"], day=TUE + timedelta(days=21)).json()
     assert client.get(f"{AG}/appuntamenti/{a4['id']}/prepagati", headers=h).json() == {"packages": [], "voucher": None, "to_pay": "40.00"}
@@ -164,3 +171,47 @@ def test_pacchetto_di_sedute_a_scalare(client, admin_headers):
     assert client.post(f"{PP}/pacchetti", headers=h, json={"name": "x", "price": "10", "items": []}).status_code == 422
     h2, *_ = salon_with_register(client, admin_headers, "Altro Salone Pacchetti")
     assert client.get(f"{PP}/venduti", headers=h2).json() == [] and client.get(f"{PP}/buoni", headers=h2).json() == []
+
+
+def test_buono_alla_cassa_al_banco_e_scadenze(client, admin_headers):
+    """Cassa al banco: pagamento «buono regalo» solo con un codice valido; scontrino, buono scalato, ricevuta del saldo.
+    Avviso WhatsApp dei buoni e pacchetti in scadenza."""
+    from app.core.db import new_session, set_tenant
+    from app.marketing import jobs as mjobs
+    from app.prepagati.models import GiftVoucher
+    h, reg, pane, ah = salon_with_register(client, admin_headers, "Salone Banco")
+    giulia = client_(client, h, "Giulia", "Bianchi", "333 2222222")
+    v = client.post(f"{PP}/buoni", headers=h, json={"client_uuid": str(uuid.uuid4()), "kind": "importo", "amount": "50", "beneficiary_id": giulia["id"],
+                                                   "register_id": reg["id"], "payments": pay("contanti", "50")}).json()["voucher"]
+    for j in jobs(client, ah):
+        done(client, ah, j)
+    sale = lambda **kw: client.post(f"/api/pos/casse/{reg['id']}/vendite", headers=h, json={
+        "client_uuid": str(uuid.uuid4()), "lines": [{"item_id": pane["id"], "quantity": "2", "unit_price_gross": "10.00"}], **kw})
+    # senza codice, codice sbagliato, credito insufficiente, ricevuta non fiscale: rifiutato
+    assert sale(payments=pay("buono_regalo", "20")).status_code == 422
+    assert sale(payments=pay("buono_regalo", "20"), voucher_code="BR-XXXX-XXXX").status_code == 404
+    r = sale(payments=pay("buono_regalo", "20"), voucher_code=v["code"], nonfiscal_reason="Altro")
+    assert r.status_code == 422
+    # 20 € pagati col buono: scontrino, residuo 30 €, ricevuta del saldo
+    r = sale(payments=pay("buono_regalo", "20"), voucher_code=v["code"].replace("-", "").lower(), customer_id=giulia["id"])
+    assert r.status_code in (200, 201), r.text
+    assert r.json()["fiscal"]["prepaid"]["voucher"]["left"] == "30.00"
+    assert [j["kind"] for j in jobs(client, ah)] == ["rt.receipt", "rt.nonfiscal"]
+    assert client.get(f"{PP}/buoni/{v['id']}", headers=h).json()["balance"] == "30.00"
+    assert sale(payments=pay("buono_regalo", "40"), voucher_code=v["code"]).status_code == 422  # restano 30
+    # scadenza tra 20 giorni: avviso WhatsApp una volta sola
+    tid = client.get("/api/auth/me", headers=h).json()["tenant"]["id"]
+    db = new_session()
+    try:
+        set_tenant(db, tid)
+        g = db.get(GiftVoucher, uuid.UUID(v["id"]))
+        g.expires_on = prepaid.today() + timedelta(days=20)
+        db.commit()
+        set_tenant(db, tid)
+        assert mjobs.prepaid_expiry(db, tid, prepaid.today()) == 1
+        assert mjobs.prepaid_expiry(db, tid, prepaid.today()) == 0
+        db.commit()
+    finally:
+        db.close()
+    body = next(m["body"] for m in client.get(f"{AG}/clienti/{giulia['id']}", headers=h).json()["messages"] if m["kind"] == "prepagato_scadenza")
+    assert v["code"] in body and "30,00 €" in body

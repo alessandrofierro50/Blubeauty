@@ -128,3 +128,33 @@ def run_reminders(session_factory, on: date) -> dict:
 
 def run_daily_marketing(session_factory, on: date) -> dict:
     return _each(session_factory, on, "marketing", lambda db, tid: daily_marketing(db, tid, on))
+
+
+def prepaid_expiry(db: Session, tenant_id, on: date) -> int:
+    """Buoni con credito e pacchetti con sedute che scadono entro N giorni (automatico «prepagato_scadenza»)."""
+    from app.prepagati import service as pp
+    from app.prepagati.models import ClientPackage, GiftVoucher
+    a = msg.automation(db, tenant_id, "prepagato_scadenza")
+    if not a.enabled:
+        return 0
+    until, n = on + timedelta(days=a.offset or 30), 0
+    for v in db.scalars(select(GiftVoucher).where(GiftVoucher.status == "attivo", GiftVoucher.balance > 0,
+                                                  GiftVoucher.expires_on.between(on, until))):
+        party = pp.voucher_party(db, v)
+        if party is not None and pp.notify(db, tenant_id, "prepagato_scadenza", party,
+                                           {"cosa": f"il tuo buono regalo {v.code}", "data": v.expires_on.strftime("%d/%m/%Y"),
+                                            "resta": f"hai ancora {pp.fmt_eur(v.balance)} € da usare"}, dedupe_key=f"scadenza:{v.id}"):
+            n += 1
+    cps = list(db.scalars(select(ClientPackage).where(ClientPackage.status == "attivo", ClientPackage.expires_on.between(on, until))))
+    used = pp.used_counts(db, [c.id for c in cps])
+    for cp in cps:
+        left = sum(x["sessions"] - used.get((cp.id, x["service_id"]), 0) for x in cp.items)
+        if left > 0 and pp.notify(db, tenant_id, "prepagato_scadenza", db.get(Party, cp.party_id),
+                                  {"cosa": f"il tuo pacchetto «{cp.name}»", "data": cp.expires_on.strftime("%d/%m/%Y"),
+                                   "resta": f"ti restano {left} sedute"}, dedupe_key=f"scadenza:{cp.id}"):
+            n += 1
+    return n
+
+
+def run_prepaid_expiry(session_factory, on: date) -> dict:
+    return _each(session_factory, on, "pos", lambda db, tid: prepaid_expiry(db, tid, on))

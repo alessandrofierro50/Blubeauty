@@ -30,6 +30,8 @@ celery_app.conf.beat_schedule = {
     # BluBeauty: promemoria degli appuntamenti ogni ora (al minuto 11), marketing automatico ogni mattina alle 9:37.
     "promemoria-appuntamenti": {"task": "app.tasks.worker.appointment_reminders", "schedule": crontab(minute=11)},
     "marketing-automatico": {"task": "app.tasks.worker.daily_marketing", "schedule": crontab(hour=9, minute=37)},
+    # Buoni regalo e pacchetti in scadenza (WhatsApp), ogni mattina alle 10:07.
+    "prepagati-scadenza": {"task": "app.tasks.worker.prepaid_expiry", "schedule": crontab(hour=10, minute=7)},
     "riepilogo-settimanale": {
         "task": "app.tasks.worker.weekly_admin_summary",
         "schedule": crontab(hour=8, minute=17, day_of_week=1),
@@ -95,3 +97,9 @@ def appointment_reminders():
 def daily_marketing():
     from app.marketing.jobs import run_daily_marketing
     return run_daily_marketing(new_session, today())
+
+
+@celery_app.task
+def prepaid_expiry():
+    from app.marketing.jobs import run_prepaid_expiry
+    return run_prepaid_expiry(new_session, today())

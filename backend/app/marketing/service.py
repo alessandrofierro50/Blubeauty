@@ -30,6 +30,8 @@ _transport: httpx.BaseTransport | None = None  # nei test: httpx.MockTransport
 # Automatici dell'agenda (pacchetto AGENDA) e del marketing (pacchetto SALONE)
 AGENDA_KINDS = ["conferma", "promemoria", "disdetta"]
 MARKETING_KINDS = ["grazie", "richiamo", "compleanno", "clienti_persi", "premio"]
+# Buoni regalo e pacchetti (modulo pos, pacchetto SALONE): messaggi di servizio, non di marketing (niente consenso marketing)
+PREPAID_KINDS = ["buono_ricevuto", "buono_saldo", "pacchetto_acquistato", "pacchetto_seduta", "prepagato_scadenza"]
 
 KIND_LABEL = {
     "conferma": "Conferma prenotazione",
@@ -40,6 +42,11 @@ KIND_LABEL = {
     "compleanno": "Auguri di compleanno",
     "clienti_persi": "Clienti persi",
     "premio": "Premio fedeltà raggiunto",
+    "buono_ricevuto": "Buono regalo ricevuto",
+    "buono_saldo": "Buono regalo usato (credito residuo)",
+    "pacchetto_acquistato": "Pacchetto o abbonamento acquistato",
+    "pacchetto_seduta": "Seduta scalata dal pacchetto",
+    "prepagato_scadenza": "Buono o pacchetto in scadenza",
     "campagna": "Campagna",
 }
 
@@ -59,6 +66,15 @@ DEFAULT_AUTOMATIONS = {
                          "questo mese. Prenota: {link}"),
     "premio": (None, "Complimenti {nome}! 🎁 Hai {punti} punti fedeltà da {salone}: alla prossima visita puoi avere «{premio}». "
                      "Prenota qui: {link}"),
+    "buono_ricevuto": (None, "Ciao {nome}! 🎁 Hai ricevuto un buono regalo da {salone} di {importo}. Codice {codice}{scadenza}.\n"
+                             "Eccolo qui: {buono}\nPrenota quando vuoi: {link}"),
+    "buono_saldo": (None, "Ciao {nome}, hai usato {usato} del tuo buono regalo {codice}: ti restano {residuo}{scadenza}. "
+                          "Lo trovi qui: {buono}"),
+    "pacchetto_acquistato": (None, "Grazie {nome}! 📦 Il tuo pacchetto «{pacchetto}» da {salone} è attivo: {sedute}{scadenza}. "
+                                   "Prenota la prima seduta: {link}"),
+    "pacchetto_seduta": (None, "Ciao {nome}, abbiamo scalato la seduta {seduta} di {totale} del pacchetto «{pacchetto}»: "
+                               "te ne restano {restano}{scadenza}. Prenota la prossima: {link}"),
+    "prepagato_scadenza": (30, "Ciao {nome}, {cosa} da {salone} scade il {data}: {resta}. Prenota in tempo per non perderlo: {link}"),
     "clienti_persi": (60, "Ciao {nome}, ci manchi! 💙 Torna a trovarci entro fine mese: per te una sorpresa con qualsiasi "
                           "servizio. Prenota: {link}"),
 }

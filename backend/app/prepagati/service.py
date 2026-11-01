@@ -7,6 +7,7 @@ dell'appuntamento le sedute coperte e la parte pagata col buono escono dal total
 e, se è tutto coperto, si stampa una ricevuta NON fiscale con il riepilogo (residuo del buono, sedute rimaste).
 """
 
+import logging
 import secrets
 import uuid
 from datetime import date, datetime, timedelta
@@ -18,6 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.anagrafiche.models import Party
 from app.prepagati.models import ClientPackage, ClientPackageUse, GiftVoucher, GiftVoucherMove, ServicePackage
+
+log = logging.getLogger(__name__)
 
 CENT = Decimal("0.01")
 ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # senza lettere e cifre che si confondono (0/O, 1/I/L)
@@ -181,7 +184,60 @@ def sell_voucher(db: Session, tenant_id, user_id, *, kind: str, amount=None, ser
     db.add(GiftVoucherMove(tenant_id=tenant_id, voucher_id=v.id, kind="emissione", amount=amount, balance_after=amount,
                            document_id=d.id, user_id=user_id, note=label))
     db.flush()
+    if beneficiary is not None:  # il buono arriva su WhatsApp a chi lo riceve
+        notify(db, tenant_id, "buono_ricevuto", beneficiary, voucher_values(db, v), dedupe_key=f"buono_ricevuto:{v.id}")
     return v, d, change
+
+
+# ------------------------------------------------------------------------------------------------- WhatsApp
+def _date(d) -> str:
+    return d.strftime("%d/%m/%Y") if d else ""
+
+
+def voucher_values(db: Session, v: GiftVoucher, used=None) -> dict:
+    out = voucher_out(db, v)
+    return {"codice": v.code, "importo": f"{fmt_eur(v.initial_amount)} €", "residuo": f"{fmt_eur(v.balance)} €",
+            "usato": f"{fmt_eur(used)} €" if used is not None else "", "buono": out["public_url"],
+            "regalato_da": out.get("purchaser") or "", "scadenza": f", valido fino al {_date(v.expires_on)}" if v.expires_on else ""}
+
+
+def notify(db: Session, tenant_id, kind: str, party, values: dict, dedupe_key: str):
+    """Messaggio automatico di buoni e pacchetti (WhatsApp). Un errore d'invio non blocca mai la vendita."""
+    if party is None:
+        return None
+    from app.agenda.service import public_link, salon_name
+    from app.marketing import service as msg
+    try:
+        with db.begin_nested():
+            return msg.send_automatic(db, tenant_id, kind, party, {"salone": salon_name(db, tenant_id), "link": public_link(db, tenant_id), **values},
+                                      dedupe_key=dedupe_key)
+    except Exception:  # noqa: BLE001
+        log.exception("Messaggio %s non inviato", kind)
+        return None
+
+
+def voucher_party(db: Session, v: GiftVoucher, fallback=None):
+    pid = v.beneficiary_party_id or getattr(fallback, "id", None)
+    return db.get(Party, pid) if pid else None
+
+
+def check_bank_voucher(db: Session, code: str | None, amount: Decimal) -> GiftVoucher:
+    """Pagamento «buono regalo» alla cassa al banco: buono multiuso valido con credito sufficiente."""
+    if not (code or "").strip():
+        raise fail("Per pagare con un buono regalo indica il codice del buono")
+    v = usable_voucher(db, code)
+    if v.fiscal_mode != "multiuso":
+        raise fail(f"Il buono {v.code} è monouso (scontrino già emesso alla vendita): usa la ricevuta non fiscale")
+    if q(amount) > v.balance:
+        raise fail(f"Sul buono {v.code} restano solo {fmt_eur(v.balance)} €")
+    return v
+
+
+def after_voucher_use(db: Session, reg, v: GiftVoucher, used: Decimal, document_id, user_id, party=None) -> None:
+    """Dopo uno scontrino pagato col buono: ricevuta non fiscale del saldo (se resta credito) e WhatsApp col residuo."""
+    if v.balance > 0:
+        print_balance(db, reg, v, used, user_id)
+    notify(db, v.tenant_id, "buono_saldo", voucher_party(db, v, party), voucher_values(db, v, used), dedupe_key=f"buono_saldo:{document_id}")
 
 
 def use_voucher(db: Session, v: GiftVoucher, amount: Decimal, *, appointment_id=None, document_id=None, user_id=None) -> None:
@@ -334,7 +390,14 @@ def sell_package(db: Session, tenant_id, user_id, *, package_id, party_id, payme
                        sale_document_id=d.id, created_by=user_id)
     db.add(cp)
     db.flush()
+    notify(db, tenant_id, "pacchetto_acquistato", party, package_values(cp), dedupe_key=f"pacchetto_acquistato:{cp.id}")
     return cp, d, change
+
+
+def package_values(cp: ClientPackage, used: dict | None = None) -> dict:
+    left = [f"{x['name']} {x['sessions'] - (used or {}).get((cp.id, x['service_id']), 0)}" for x in cp.items]
+    return {"pacchetto": cp.name, "sedute": ", ".join(f"{x['sessions']} × {x['name']}" for x in cp.items), "rimaste": ", ".join(left),
+            "scadenza": f", valido fino al {_date(cp.expires_on)}" if cp.expires_on else ""}
 
 
 def package_state(cp: ClientPackage) -> str:
@@ -447,6 +510,11 @@ def apply_plan(db: Session, plan: dict, appt, document_id, user_id) -> None:
     for cp in pkgs.values():
         if all(used.get((cp.id, x["service_id"]), 0) >= x["sessions"] for x in cp.items):
             cp.status = "esaurito"
+        tot = sum(x["sessions"] for x in cp.items)
+        done = sum(min(used.get((cp.id, x["service_id"]), 0), x["sessions"]) for x in cp.items)
+        notify(db, cp.tenant_id, "pacchetto_seduta", db.get(Party, cp.party_id),
+               {**package_values(cp, used), "seduta": str(done), "totale": str(tot), "restano": str(tot - done)},
+               dedupe_key=f"pacchetto_seduta:{document_id}:{cp.id}")
     if plan["voucher"] is not None and plan["voucher_amount"] > 0:
         use_voucher(db, plan["voucher"], plan["voucher_amount"], appointment_id=appt.id, document_id=document_id, user_id=user_id)
     db.flush()

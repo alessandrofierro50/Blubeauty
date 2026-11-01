@@ -27,6 +27,9 @@ non scritte (molti reclami dei consumatori nascono da qui: sedute non godute, ri
 - In un salone o centro estetico i servizi e i prodotti sono di norma tutti al 22% e nella stessa sede: il buono regalo è
   **quasi sempre monouso** → scontrino alla vendita del buono. (Un centro benessere che lo aveva trattato come multiuso
   è stato corretto dall'Agenzia delle Entrate.)
+- **Scelta del titolare (2026-11-01): BluBeauty tratta i buoni come MULTIUSO** (impostazione modificabile in «Buoni e pacchetti»):
+  ricevuta non fiscale alla vendita, scontrino all'utilizzo pagato «con buono regalo» senza contarlo di nuovo come incasso,
+  ricevuta non fiscale del saldo residuo. Da concordare col commercialista (e la configurazione del pagamento sul registratore).
 - **Pacchetti di sedute pagati in anticipo**: per i servizi l'operazione si considera effettuata al **pagamento**
   (art. 6 c. 3 DPR 633/72): scontrino per l'intero importo (o per la rata) quando si incassa; alla singola seduta
   nessun nuovo scontrino, solo l'annotazione (eventuale ricevuta non fiscale «seduta n. 3 di 10»).

@@ -360,6 +360,7 @@ class SaleIn(BaseModel):
     payments: list[PaymentIn]
     rt_result: dict | None = None  # documento già stampato dall'agent locale (cassa senza rete)
     nonfiscal_reason: str | None = Field(None, max_length=120)  # ricevuta non fiscale al posto dello scontrino
+    voucher_code: str | None = Field(None, max_length=20)  # pagamento «buono_regalo»: codice del buono multiuso
 
 
 def _dump(m: BaseModel) -> dict:

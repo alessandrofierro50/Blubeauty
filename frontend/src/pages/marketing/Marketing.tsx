@@ -16,6 +16,15 @@ const IDEAS = [
   { name: 'Ci manchi', body: 'Ciao {nome}, è un po\' che non ti vediamo 💙 Questo mese per te una piega in omaggio con qualsiasi servizio. Prenota: {link}' },
 ]
 
+// segnaposto dei messaggi di buoni regalo e pacchetti (app/prepagati/service.py: voucher_values, package_values)
+const PLACEHOLDERS: Record<string, string> = {
+  buono_ricevuto: '{codice} {importo} {scadenza} {buono} (pagina del buono) {regalato_da}',
+  buono_saldo: '{codice} {usato} {residuo} {scadenza} {buono}',
+  pacchetto_acquistato: '{pacchetto} {sedute} {scadenza}',
+  pacchetto_seduta: '{pacchetto} {seduta} {totale} {restano} {rimaste} {scadenza}',
+  prepagato_scadenza: '{cosa} {data} {resta}',
+}
+
 export default function Marketing() {
   const { status } = useOutletContext<AppCtx>()
   const hasMk = status.menu.some((m: any) => m.code === 'marketing' && m.enabled)
@@ -79,7 +88,7 @@ export default function Marketing() {
                   <div style={{ flex: 1 }}>
                     <Group gap={6}>
                       <Text fw={600}>{a.label}</Text>
-                      {a.offset != null && <Badge size="xs" variant="light">{a.kind === 'promemoria' ? `${a.offset} ore prima` : `${a.offset} giorni`}</Badge>}
+                      {a.offset != null && <Badge size="xs" variant="light">{a.kind === 'promemoria' ? `${a.offset} ore prima` : a.kind === 'prepagato_scadenza' ? `${a.offset} giorni prima` : `${a.offset} giorni`}</Badge>}
                       {!a.available && <Badge size="xs" color="gray" leftSection={<IconLock size={10} />}>pacchetto Salone</Badge>}
                     </Group>
                     <Text size="sm" c="dimmed" lineClamp={2}>{a.template}</Text>
@@ -164,7 +173,7 @@ export default function Marketing() {
       {edit && <Modal opened onClose={() => setEdit(null)} title={edit.label} size="lg">
         <Stack>
           <Textarea autosize minRows={4} value={edit.template} onChange={(e) => setEdit({ ...edit, template: e.target.value })}
-            description="Segnaposto: {nome} {salone} {data} {ora} {servizio} {link} {recensione} {giorni}" />
+            description={`Segnaposto: {nome} {salone} {link} ${PLACEHOLDERS[edit.kind] ?? '{data} {ora} {servizio} {recensione} {giorni}'}`} />
           {edit.offset != null && <NumberInput label={edit.kind === 'promemoria' ? 'Ore prima dell\'appuntamento' : 'Giorni'} value={edit.offset} onChange={(v) => setEdit({ ...edit, offset: Number(v) })} min={0} />}
           <Button onClick={async () => { if (await saveAuto(edit, { template: edit.template, offset: edit.offset })) { setEdit(null); notifyOk('Testo salvato') } }}>Salva</Button>
         </Stack>
