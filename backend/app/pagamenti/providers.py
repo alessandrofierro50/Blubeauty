@@ -64,6 +64,8 @@ def stripe_checkout(*, payment_id: str, tenant_id: str, description: str, total:
         "line_items[0][price_data][unit_amount]": str(cents(total)),
         "line_items[0][price_data][product_data][name]": description,
         "locale": "it",
+        # le fatture degli abbonamenti le emette BluCode: niente Managed Payments (Stripe venditore al posto nostro)
+        "managed_payments[enabled]": "false",
         "success_url": success_url,
         "cancel_url": cancel_url,
     }
