@@ -197,3 +197,34 @@ def test_dashboard(client, admin_headers):
     assert d["tenants_total"] == 2
     assert d["by_plan"] == {"BASE": 1, "PRO": 1}
     assert float(d["mrr"]) > 0
+
+
+def test_eliminazione_azienda_con_archivio(client, admin_headers, tmp_path, monkeypatch):
+    import hashlib
+    import zipfile
+    from app.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "archive_dir", str(tmp_path / "archivi"))
+    a = make_tenant(client, admin_headers, "Azienda Da Eliminare")
+    b = make_tenant(client, admin_headers, "Azienda Che Resta")
+    activate_and_login(client, a)
+    hb = activate_and_login(client, b)
+    base = f"/api/admin/tenants/{a['id']}"
+    # non sospesa: niente archivio né eliminazione
+    assert client.post(f"{base}/archivio", headers=admin_headers).status_code == 409
+    assert client.post(f"{base}/suspend", headers=admin_headers).status_code == 200
+    arc = client.post(f"{base}/archivio", headers=admin_headers).json()
+    assert arc["rows"] > 0
+    data = client.get(f"{base}/archivio/{arc['file']}", headers=admin_headers).content
+    assert hashlib.sha256(data).hexdigest() == arc["sha256"]
+    names = zipfile.ZipFile(__import__("io").BytesIO(data)).namelist()
+    assert "dati/users.json" in names and "dati/tenants.json" in names
+    ok = {"file": arc["file"], "sha256": arc["sha256"], "name": "Azienda Da Eliminare", "confirm": "ELIMINA"}
+    for bad in ({"name": "Altra"}, {"confirm": "elimina?"}, {"sha256": "0" * 64}):
+        assert client.post(f"{base}/elimina", json={**ok, **bad}, headers=admin_headers).status_code == 400
+    assert client.post(f"{base}/elimina", json=ok, headers=admin_headers).status_code == 200
+    assert client.get(base, headers=admin_headers).status_code == 404
+    # l'altra azienda è intatta e l'archivio sul server resta
+    assert client.get("/api/auth/me", headers=hb).status_code == 200
+    assert (tmp_path / "archivi" / arc["file"]).exists()
+    log = client.get("/api/admin/audit", headers=admin_headers)
+    assert "eliminazione" in log.text or log.status_code == 404

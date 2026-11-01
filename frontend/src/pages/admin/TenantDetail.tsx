@@ -5,7 +5,7 @@ import { IconArrowLeft, IconKey, IconLink, IconLogin, IconPencil, IconRefresh, I
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { adminApi, fmtDate, fmtEuro, isoDate, tokens } from '../../api'
+import { ApiError, adminApi, fmtDate, fmtEuro, isoDate, tokens } from '../../api'
 import { Loading, PlanBadge, StatusBadge, notifyError, notifyOk } from '../../components'
 import { Credential } from './Tenants'
 
@@ -18,6 +18,7 @@ export default function TenantDetail() {
   const [convOpen, conv] = useDisclosure()
   const [editSub, setEditSub] = useState<any>(null)
   const [pwUser, setPwUser] = useState<any>(null)
+  const [delOpen, del] = useDisclosure()
 
   const load = () => adminApi(`/tenants/${id}`).then(setT).catch(notifyError)
   useEffect(() => {
@@ -74,6 +75,7 @@ export default function TenantDetail() {
           {t.suspended
             ? <Button color="green" variant="light" onClick={() => action('/reactivate', 'Azienda riattivata')}>Riattiva</Button>
             : <Button color="red" variant="light" onClick={() => confirm('Sospendere l\'accesso a questa azienda?') && action('/suspend', 'Azienda sospesa')}>Sospendi</Button>}
+          {t.suspended && <Button color="red" leftSection={<IconTrash size={16} />} onClick={del.open}>Elimina azienda</Button>}
         </Group>
       </Group>
 
@@ -154,6 +156,7 @@ export default function TenantDetail() {
         <Tabs.Panel value="dati"><DataTab t={t} onSaved={setT} /></Tabs.Panel>
       </Tabs>
 
+      {delOpen && <DeleteTenantModal tenant={t} onClose={del.close} onDeleted={() => nav('/admin/aziende')} />}
       {pwUser && <UserPasswordModal tenantId={id!} user={pwUser} onClose={() => { setPwUser(null); load() }} />}
       {convOpen && <ConvertTrialModal tenant={t} onClose={conv.close} onSaved={(d) => { setT({ ...t, ...d }); conv.close() }} />}
       {editSub && <EditPeriodModal sub={editSub} onClose={() => setEditSub(null)} onSaved={(d) => { setT({ ...t, ...d }); setEditSub(null) }} />}
@@ -381,6 +384,70 @@ function EditPeriodModal({ sub, onClose, onSaved }: { sub: any; onClose: () => v
         </SimpleGrid>
         <TextInput label="Note" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} />
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>Annulla</Button><Button onClick={save}>Salva</Button></Group>
+      </Stack>
+    </Modal>
+  )
+}
+
+/** Eliminazione definitiva: archivio ZIP (copia sul server + download sul computer), poi nome e parola ELIMINA. */
+function DeleteTenantModal({ tenant, onClose, onDeleted }: { tenant: any; onClose: () => void; onDeleted: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [arc, setArc] = useState<{ file: string; sha256: string; size: number; rows: number; media: number } | null>(null)
+  const [localSha, setLocalSha] = useState('')
+  const [name, setName] = useState('')
+  const [word, setWord] = useState('')
+
+  async function makeArchive() {
+    setBusy(true)
+    try {
+      const a = await adminApi(`/tenants/${tenant.id}/archivio`, { method: 'POST' })
+      const res = await fetch(`/api/admin/tenants/${tenant.id}/archivio/${a.file}`, { headers: { Authorization: `Bearer ${tokens.get('admin')}` } })
+      if (!res.ok) throw new ApiError(res.status, 'Scaricamento dell\'archivio non riuscito')
+      const blob = await res.blob()
+      // l'impronta si calcola sui byte ricevuti dal browser: se coincide con quella del server il file è intero
+      const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())
+      const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
+      if (hex !== a.sha256) throw new Error('Il file scaricato è diverso da quello sul server: riprova.')
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = a.file
+      link.click()
+      URL.revokeObjectURL(url)
+      setArc(a)
+      setLocalSha(hex)
+      notifyOk('Archivio creato sul server e scaricato sul computer')
+    } catch (e) { notifyError(e) }
+    setBusy(false)
+  }
+
+  async function remove() {
+    if (!arc) return
+    setBusy(true)
+    try {
+      await adminApi(`/tenants/${tenant.id}/elimina`, { method: 'POST', body: { file: arc.file, sha256: localSha, name, confirm: word } })
+      notifyOk('Azienda eliminata')
+      onDeleted()
+    } catch (e) { notifyError(e) }
+    setBusy(false)
+  }
+
+  const ready = !!arc && name.trim() === tenant.name && word.trim() === 'ELIMINA'
+  return (
+    <Modal opened onClose={onClose} title={`Elimina ${tenant.name}`} size="lg">
+      <Stack>
+        <Alert color="red">L'eliminazione è definitiva: spariscono utenti, anagrafiche, documenti, magazzino e file. Prima si crea un archivio completo, che resta sul server e viene scaricato sul tuo computer.</Alert>
+        <Text fw={600}>1. Archivio</Text>
+        {arc
+          ? <Alert color="green">Archivio <b>{arc.file}</b>: {arc.rows} righe, {arc.media} file caricati, {(arc.size / 1024).toFixed(0)} KB. Copia sul server e sul computer verificate (SHA-256 {arc.sha256.slice(0, 12)}…).</Alert>
+          : <Button onClick={makeArchive} loading={busy}>Crea l'archivio e scaricalo</Button>}
+        <Text fw={600}>2. Conferma</Text>
+        <TextInput label={`Scrivi il nome dell'azienda: ${tenant.name}`} value={name} onChange={(e) => setName(e.currentTarget.value)} disabled={!arc} />
+        <TextInput label="Scrivi la parola ELIMINA" value={word} onChange={(e) => setWord(e.currentTarget.value)} disabled={!arc} />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Annulla</Button>
+          <Button color="red" disabled={!ready} loading={busy} onClick={remove}>Elimina definitivamente</Button>
+        </Group>
       </Stack>
     </Modal>
   )

@@ -32,9 +32,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       PUBLIC_URL: https://${SITE_DOMAIN}
       MEDIA_DIR: /data/media
+      ARCHIVE_DIR: /data/archivi
       AGENT_DIR: /agent
     volumes:
       - media:/data/media
+      - ./archivi-eliminazioni:/data/archivi
       - ./agent:/agent:ro
     depends_on:
       db: { condition: service_healthy }

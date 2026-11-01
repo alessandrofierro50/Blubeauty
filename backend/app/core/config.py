@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     # Cartella dei file caricati (immagini articoli, allegati)
     media_dir: str = "./media"
+    # Archivi delle aziende eliminate (ZIP con tutti i dati); in Docker: cartella ./archivi-eliminazioni sul server
+    archive_dir: str = ""
     # Cartella con BluBeauty Agent da scaricare dal gestionale (in Docker: ./agent montata in /agent)
     agent_dir: str = ""
 

@@ -4,6 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+from fastapi.responses import FileResponse
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
@@ -16,6 +17,7 @@ from app.core.config import get_settings
 from app.core.db import get_db, set_tenant
 from app.core.deps import get_admin
 from app.core.mailer import send_email
+from app.saas import eliminazione
 from app.core.models import (
     AuditLog,
     Company,
@@ -492,6 +494,33 @@ def suspend_tenant(tenant_id: uuid.UUID, admin: SuperAdmin = Depends(get_admin),
     t.suspended = True
     audit(db, "tenant", "sospensione", t.id, tenant_id=t.id, admin_id=admin.id)
     return _tenant_out(t)
+
+
+class DeleteIn(BaseModel):
+    file: str
+    sha256: str
+    name: str
+    confirm: str
+
+
+@router.post("/tenants/{tenant_id}/archivio")
+def create_tenant_archive(tenant_id: uuid.UUID, admin: SuperAdmin = Depends(get_admin), db: Session = Depends(get_db)):
+    """Archivio completo (ZIP) dell'azienda sospesa: resta sul server e va scaricato sul computer."""
+    return eliminazione.create_archive(db, _get_tenant(db, tenant_id), admin.id)
+
+
+@router.get("/tenants/{tenant_id}/archivio/{file}")
+def download_tenant_archive(tenant_id: uuid.UUID, file: str, admin: SuperAdmin = Depends(get_admin)):
+    path = eliminazione.archive_path(tenant_id, file)
+    return FileResponse(path, media_type="application/zip", filename=file)
+
+
+@router.post("/tenants/{tenant_id}/elimina")
+def delete_tenant(tenant_id: uuid.UUID, body: DeleteIn, admin: SuperAdmin = Depends(get_admin),
+                  db: Session = Depends(get_db)):
+    """Eliminazione definitiva: azienda sospesa, archivio scaricato (stessa impronta SHA-256), nome e parola ELIMINA."""
+    return eliminazione.delete_tenant(db, _get_tenant(db, tenant_id), admin.id, name=body.name, confirm=body.confirm,
+                                      sha256=body.sha256, file=body.file)
 
 
 @router.post("/tenants/{tenant_id}/reactivate")
