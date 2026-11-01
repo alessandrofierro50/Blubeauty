@@ -120,7 +120,7 @@ def test_documento_commerciale_reso_e_chiusura(client, admin_headers):
     cj = jobs(client, ah)[0]
     assert cj["kind"] == "rt.nonfiscal"
     texts = [x.get("rt_text") or x.get("text") for x in cj["payload"]["lines"] if not x.get("rt_skip") and x.get("text")]
-    assert "COPIA DI CORTESIA" in texts and texts[-1] == "NON VALIDO COME DOC. COMMERCIALE"
+    assert "COPIA DI CORTESIA" in texts and not any("NON VALIDO" in t for t in texts)
     done(client, ah, cj)
     # senza rete: la cassa ha stampato tramite l'agent locale, il server registra l'esito senza nuovo lavoro
     off = sale(client, h, reg, [{"item_id": acqua["id"], "unit_price_gross": "0.40"}], [{"method": "contanti", "amount": "0.40"}],

@@ -57,7 +57,8 @@ proposto in evidenza. L'interruttore «Mostra tutte le funzioni» riporta al ges
 - Si stampa sulla **stampante termica da 80 mm** (ESC/POS, tramite BluBeauty Agent), sul **registratore telematico come
   documento non fiscale** o dal computer (pagina 80 mm). Sul registratore Custom si usa lo stesso metodo di BluOrderScan e del
   gestionale macellerie (comandi 4001/4003/4004, già usati sul KUBE II): testo semplice da 32 caratteri, intestazione stampata
-  dal registratore, dicitura «NON VALIDO COME DOC. COMMERCIALE». Su Epson il documento non fiscale è da collaudare.
+  dal registratore, senza la dicitura «non valido come documento commerciale» (tolta dal titolare il 2026-11-01).
+  Su Epson il documento non fiscale è da collaudare.
 
 ## Registratore Custom e stampante termica: esperienza di BluOrderScan
 Il primo scontrino reale su un Custom KUBE II-F è uscito in BluOrderScan dopo diverse prove; BluBeauty Agent

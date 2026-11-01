@@ -183,8 +183,7 @@ def document_receipt(db: Session, d, pays: list, register_name: str = "") -> dic
     L.append({"type": "feed"})
     for t in cfg.get("footer") or []:
         L.append({"text": t, "align": "center"})
-    L += [{"text": "NON VALIDO COME DOCUMENTO COMMERCIALE", "rt_text": "NON VALIDO COME DOC. COMMERCIALE", "align": "center", "bold": True},
-          {"type": "cut"}]
+    L.append({"type": "cut"})  # niente dicitura «non valido come documento commerciale» (scelta del titolare, 2026-11-01)
     return {"lines": L}
 
 

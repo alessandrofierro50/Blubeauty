@@ -82,7 +82,5 @@ def build(db: Session, tenant_id, appt: Appointment, with_marketing: bool = True
                                     "rt_text": "Prenota online: " + svc.public_link(db, tenant_id).split("://", 1)[-1]},
           {"type": "qr", "data": svc.public_link(db, tenant_id), "label": svc.public_link(db, tenant_id), "align": "center"},
           {"type": "line"},
-          # dicitura come BluOrderScan e il gestionale macellerie (sul registratore, 32 caratteri)
-          {"text": "DOCUMENTO NON FISCALE", "rt_text": "NON VALIDO COME DOC. COMMERCIALE", "align": "center"},
           {"text": datetime.now(svc.TZ).strftime("%d/%m/%Y %H:%M"), "align": "center"}, {"type": "cut"}]
     return {"lines": L}

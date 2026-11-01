@@ -44,7 +44,6 @@ export function ReceiptPrint({ r, company, register }: { r: any; company: any; r
       <div className="c" style={{ fontWeight: 700 }}>
         {r.doc_type === 'FTI' ? `FATTURA N. ${r.number}/${r.year}` : isReturn ? (r.fiscal?.kind === 'annullo' ? 'DOCUMENTO DI ANNULLO' : 'DOCUMENTO DI RESO') : 'RICEVUTA DI CORTESIA'}
       </div>
-      {r.doc_type === 'SCO' && <div className="c muted">non valida ai fini fiscali</div>}
       {r.doc_type === 'FTI' && <div className="c muted">intestata a {r.party_name}</div>}
       <hr />
       {r.lines.map((l: any) => (

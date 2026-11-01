@@ -369,7 +369,7 @@ def test_ricevuta_non_fiscale_termica_e_registratore(client, admin_headers):
     a = book(client, h, laura, c["piega"], "10:00").json()
     prev = client.get(f"{AG}/appuntamenti/{a['id']}/ricevuta", headers=h).json()["lines"]
     texts = [ln.get("text", "") for ln in prev]
-    assert "PROMEMORIA APPUNTAMENTO" in texts and "DOCUMENTO NON FISCALE" in texts
+    assert "PROMEMORIA APPUNTAMENTO" in texts and not any("NON VALIDO" in t for t in texts)
     # la cassa deve essere quella predefinita dell'agenda
     st = client.get(f"{AG}/impostazioni", headers=h).json()
     assert client.post(f"{AG}/appuntamenti/{a['id']}/ricevuta", headers=h, json={"where": "registratore"}).status_code == 422

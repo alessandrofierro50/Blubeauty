@@ -32,7 +32,7 @@ def test_ricevuta_non_fiscale_al_posto_dello_scontrino(client, admin_headers):
     assert [j["kind"] for j in js] == ["rt.nonfiscal"]  # niente documento commerciale: la ricevuta va sul registratore
     t = texts(js[0]["payload"], rt=True)
     words = [x for x, _ in t]
-    assert "RICEVUTA NON FISCALE" in words and words[-1] == "NON VALIDO COME DOC. COMMERCIALE"
+    assert "RICEVUTA NON FISCALE" in words and not any("NON VALIDO" in w for w in words)
     assert ("TOTALE COMPLESSIVO", "0,80") in t and ("Pagamento contante", "5,00") in t and ("Resto", "4,20") in t
     assert any(x == "DESCRIZIONE" for x in words) and "Motivo: Buono regalo venduto" in words
     assert not any("Fiscale Srl" in x or "Salone Non Fiscale" in x for x in words)  # l'intestazione la stampa il registratore

@@ -62,11 +62,11 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   registratore. Custom: **come BluOrderScan e il gestionale macellerie** (repository `Ordini-scan`, `backend/rt_custom.py`
   `build_nonfiscal` e `ponte/sof_bridge.py`): directIO `4001` dato `10`, una `4003` `1`+lunghezza+testo per riga, `4004`,
   una richiesta per comando, `resetPrinter` se un comando è rifiutato; righe ASCII da 32 caratteri (rotolo 57 mm, opzione
-  `width`), senza intestazione (`rt_skip`: la stampa il registratore), in fondo «NON VALIDO COME DOC. COMMERCIALE».
+  `width`), senza intestazione (`rt_skip`: la stampa il registratore) (senza la dicitura «non valido come documento commerciale», scelta del titolare del 2026-11-01).
   Epson: printerNonFiscal di fpmate, non ancora collaudato.
 - Cassa (`/cassa`): «Copia cortesia» (F1, nella barra in alto, dopo la vendita e in «Scontrini») = copia NON fiscale
   dell'ultimo scontrino sul registratore: `POST /api/pos/scontrini/{id}/stampa` con `where: registratore` → `rt.nonfiscal`
-  da `periferiche.service.text_receipt` (intestazione `rt_skip`, riga `rt_only` «NON VALIDO COME DOC. COMMERCIALE»).
+  da `periferiche.service.text_receipt` (intestazione `rt_skip`).
 - Menu completo: tasto «Schermata principale» e casella «Cerca funzione» (`AppLayout.tsx`: voci dei moduli attivi +
   `KEYWORDS` per percorso, senza accenti; ordine nome > gruppo > parole chiave; Invio apre la prima, Esc svuota).
 - Barra in alto: `<HeaderAction>` (components.tsx) mette il pulsante principale di una pagina accanto al pacchetto
