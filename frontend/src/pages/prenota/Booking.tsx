@@ -210,3 +210,43 @@ export function MyAppointment() {
     </div>
   )
 }
+
+/** Il buono regalo sul telefono di chi lo riceve (link mandato su WhatsApp): valore, credito residuo, codice e QR. */
+export function VoucherPage() {
+  const { slug = '', token = '' } = useParams()
+  const [v, setV] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [qr, setQr] = useState('')
+  useEffect(() => { call(`${slug}/buono/${token}`).then(setV).catch((e) => setError(e.message)) }, [slug, token])
+  useEffect(() => {
+    if (v) import('qrcode').then((Q) => Q.toDataURL(v.code.replace(/-/g, ''), { margin: 1, width: 220 }).then(setQr))
+  }, [v])
+  if (!v) return <div className="bk-wrap"><div className="bk-app"><div className="bk-head"><h1>Buono regalo</h1></div><main className="bk-main">{error ? <p className="bk-warn">{error}</p> : null}</main></div></div>
+  const off = v.status !== 'attivo'
+  const label: Record<string, string> = { esaurito: 'Già utilizzato', scaduto: 'Scaduto', annullato: 'Non più valido' }
+  return (
+    <div className="bk-wrap">
+      <div className="bk-app">
+        <header className="bk-head">
+          <div className="bk-top"><span className="bk-brand"><Mark /> BluBeauty</span></div>
+          <h1>{v.salon}</h1>
+          <p>{v.beneficiary_name ? `Per ${v.beneficiary_name}: un regalo per te` : 'Un regalo per te'} 🎁</p>
+        </header>
+        <main className="bk-main">
+          <div className={`bk-appt ${off ? 'off' : ''}`} style={{ textAlign: 'center' }}>
+            <small className={off ? 'red' : ''}>{off ? label[v.status] ?? v.status : 'Buono regalo'}</small>
+            <h2 style={{ margin: '6px 0' }}>{v.service ?? euro(v.initial_amount)}</h2>
+            {v.message && <p style={{ fontStyle: 'italic' }}>«{v.message}»</p>}
+            {v.balance !== v.initial_amount && !off && <div className="bk-line"><span>Credito ancora disponibile</span><b>{euro(v.balance)}</b></div>}
+            {qr && <img src={qr} alt="" width={180} height={180} style={{ margin: '10px auto', display: 'block' }} />}
+            <div className="bk-line"><span>Codice</span><b style={{ fontFamily: 'monospace' }}>{v.code}</b></div>
+            {v.expires_on && <div className="bk-line"><span>Valido fino al</span><b>{new Date(v.expires_on + 'T12:00').toLocaleDateString('it-IT')}</b></div>}
+          </div>
+          <p style={{ textAlign: 'center', fontSize: 14, opacity: 0.8 }}>Mostra questa pagina in salone quando vieni: si può usare anche in più volte.</p>
+          {!off && <a className="bk-primary" href={v.booking_url}>Prenota il tuo appuntamento</a>}
+          {(v.address || v.phone) && <p style={{ textAlign: 'center', fontSize: 14 }}>{v.address}{v.phone ? ` · Tel. ${v.phone}` : ''}</p>}
+        </main>
+      </div>
+    </div>
+  )
+}

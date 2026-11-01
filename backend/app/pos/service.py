@@ -463,7 +463,8 @@ def create_sale(db: Session, reg: PosRegister, user_id, body: dict) -> tuple[Doc
                  fiscal={"lottery": (body.get("lottery_code") or "").strip().upper() or None}, reference=None)
     db.add(d)
     lines = [ln for ln in body["lines"] if not ln.get("_promo") and _q(ln.get("unit_price_gross")) >= 0]
-    _build_lines(db, d, lines + promo_lines(db, lines), vat_included=not party)
+    # buoni regalo e pacchetti: prezzo fissato, niente promozioni di cassa
+    _build_lines(db, d, lines + ([] if body.get("no_promos") else promo_lines(db, lines)), vat_included=not party)
     total = _q(d.total)
     payments = body.get("payments") or []
     if party and payments:  # fattura al banco: lo scorporo per riga può spostare qualche centesimo rispetto alla cassa

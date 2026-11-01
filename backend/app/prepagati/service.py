@@ -104,7 +104,7 @@ def _sale(db: Session, tenant_id, user_id, register_id, client_uuid, description
     pays = [dict(p) for p in payments]
     if len(pays) == 1 and pays[0].get("method") != "contanti":
         pays[0]["amount"] = str(amount)  # carta/bancomat: l'importo esatto
-    body = {"client_uuid": str(client_uuid or uuid.uuid4()), "payments": pays, "customer_id": str(party.id) if party else None,
+    body = {"client_uuid": str(client_uuid or uuid.uuid4()), "payments": pays, "customer_id": str(party.id) if party else None, "no_promos": True,
             "lines": [{"description": description[:120], "quantity": "1", "unit_price_gross": str(q(amount)),
                        "vat_rate_id": str(vat_rate_id) if vat_rate_id else None,
                        "department_id": str(cfg.department_id) if cfg.department_id else None, "price_source": "Prepagati"}]}

@@ -11,6 +11,7 @@ import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { NewAppointment } from './Agenda'
 import { STATUS, hhmm, longDay } from './lib'
 import { WhatsAppChat } from './WhatsAppChat'
+import { PackageProgress, SellPackage, SellVoucher } from '../salone/Prepaid'
 
 export function ClientsList() {
   const [q, setQ] = useState('')
@@ -123,6 +124,7 @@ export function ClientDetail() {
               </Group>
             </Paper>
             {c.loyalty && <LoyaltyBox c={c} reload={load} />}
+            <PrepaidBox client={c} />
             <Paper withBorder p="md">
               <Group justify="space-between" mb="sm"><Title order={4}>Schede tecniche</Title><Button size="xs" variant="light" onClick={() => setCardOpen(true)}>Aggiungi</Button></Group>
               {c.cards.length === 0 && <Text c="dimmed" size="sm">Nessuna scheda: aggiungi la formula colore o l'anamnesi.</Text>}
@@ -237,6 +239,44 @@ function LoyaltyBox({ c, reload }: { c: any; reload: () => void }) {
         {L.moves.slice(0, 6).map((m: any, i: number) => <Table.Tr key={i}><Table.Td>{new Date(m.created_at).toLocaleDateString('it-IT')}</Table.Td>
           <Table.Td>{REASON[m.reason] ?? m.reason}{m.note ? ` · ${m.note}` : ''}</Table.Td><Table.Td ta="right" c={m.points < 0 ? 'red' : 'green'} fw={700}>{m.points > 0 ? '+' : ''}{m.points}</Table.Td></Table.Tr>)}
       </Table.Tbody></Table>}
+    </Paper>
+  )
+}
+
+/** Pacchetti della cliente (sedute rimaste) e buoni regalo che ha comprato; vendita di un pacchetto o di un buono. */
+function PrepaidBox({ client }: { client: any }) {
+  const [d, setD] = useState<any>(null)
+  const [sell, setSell] = useState<'pacchetto' | 'buono' | null>(null)
+  const load = () => appApi(`/api/prepagati/clienti/${client.id}`).then(setD).catch(() => setD(false))
+  useEffect(() => { load() }, [client.id])
+  if (d === false || d === null) return null  // modulo cassa non attivo
+  const active = d.packages.filter((p: any) => p.status === 'attivo')
+  const who = { id: client.id, name: client.name }
+  return (
+    <Paper withBorder p="md">
+      <Group justify="space-between" mb="sm">
+        <Title order={4}>Pacchetti e buoni regalo</Title>
+        <Group gap="xs">
+          <Button size="xs" variant="light" onClick={() => setSell('pacchetto')}>Vendi un pacchetto</Button>
+          <Button size="xs" variant="light" color="grape" leftSection={<IconGift size={14} />} onClick={() => setSell('buono')}>Buono regalo</Button>
+        </Group>
+      </Group>
+      {active.length === 0 && d.vouchers.length === 0 && <Text c="dimmed" size="sm">Nessun pacchetto in corso e nessun buono comprato.</Text>}
+      <SimpleGrid cols={{ base: 1, sm: 2 }}>
+        {active.map((p: any) => (
+          <Paper key={p.id} withBorder p="sm" radius="md">
+            <Text fw={700} mb={4}>{p.name}</Text>
+            <PackageProgress cp={p} />
+            <Text size="xs" c="dimmed" mt={4}>{p.expires_on ? `Scade il ${new Date(p.expires_on + 'T12:00').toLocaleDateString('it-IT')}` : 'Senza scadenza'}</Text>
+          </Paper>
+        ))}
+      </SimpleGrid>
+      {d.vouchers.length > 0 && <Table mt="sm"><Table.Tbody>
+        {d.vouchers.map((v: any) => <Table.Tr key={v.id}><Table.Td ff="monospace">{v.code}</Table.Td><Table.Td>{v.beneficiary_name ? `per ${v.beneficiary_name}` : ''}</Table.Td>
+          <Table.Td ta="right">{fmtEuro(v.balance)} di {fmtEuro(v.initial_amount)}</Table.Td><Table.Td><Badge size="sm" variant="light">{v.status}</Badge></Table.Td></Table.Tr>)}
+      </Table.Tbody></Table>}
+      {sell === 'pacchetto' && <SellPackage client={who} onClose={() => setSell(null)} onDone={load} />}
+      {sell === 'buono' && <SellVoucher purchaser={who} onClose={() => setSell(null)} onDone={load} />}
     </Paper>
   )
 }

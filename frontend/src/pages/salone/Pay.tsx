@@ -1,6 +1,6 @@
 // Incasso semplice e stampa della ricevuta non fiscale: pochi pulsanti grandi, le opzioni avanzate restano nascoste.
 import { Alert, Badge, Box, Button, Checkbox, Collapse, Group, Modal, NumberInput, Paper, SegmentedControl, Select, SimpleGrid, Stack, Text, TextInput, ThemeIcon } from '@mantine/core'
-import { IconCash, IconCheck, IconCreditCard, IconDeviceDesktop, IconGift, IconPrinter, IconReceipt, IconSettings } from '@tabler/icons-react'
+import { IconCash, IconCheck, IconCreditCard, IconDeviceDesktop, IconGift, IconPackage, IconPrinter, IconReceipt, IconSettings } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 
 import { ApiError, appApi, fmtEuro } from '../../api'
@@ -26,6 +26,12 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
   const [reason, setReason] = useState(NONFISCAL_REASONS[0])
   const [other, setOther] = useState('')
   const nonfiscal = docKind === 'ricevuta' && !invoice ? (reason === 'Altro motivo' ? other.trim() : reason) : null
+  // buoni regalo e pacchetti (app/prepagati): anteprima del server con sedute coperte, credito usato e totale da pagare
+  const [usePkg, setUsePkg] = useState(true)
+  const [voucherCode, setVoucherCode] = useState<string | null>(null)
+  const [voucherInput, setVoucherInput] = useState('')
+  const [askVoucher, setAskVoucher] = useState(false)
+  const [preview, setPreview] = useState<any>(null)
 
   useEffect(() => {
     if (appt.party_id) appApi(`/api/agenda/clienti/${appt.party_id}`).then(setClient).catch(() => {})
@@ -44,12 +50,22 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
     : rw.kind === 'servizio' ? Number(appt.items.find((i) => i.service_id === rw.service_id)?.price ?? 0) : Math.min(rw.value ?? 0, services)
   const available = (client?.loyalty?.rewards ?? []).filter((r: any) => r.available)
   const prod = products.reduce((s, p) => s + p.price, 0)
-  const total = Math.max(0, services - Math.min(discount || 0, services) - rewardValue + prod)
+  const localTotal = Math.max(0, services - Math.min(discount || 0, services) - rewardValue + prod)
+  useEffect(() => {
+    const qs = new URLSearchParams({ pacchetti: String(usePkg), sconto: String(Math.min(discount || 0, services) + rewardValue), prodotti: String(prod) })
+    if (voucherCode) qs.set('buono', voucherCode)
+    appApi(`/api/agenda/appuntamenti/${appt.id}/prepagati?${qs}`).then(setPreview).catch((e) => {
+      if (voucherCode) { notifyError(e); setVoucherCode(null) } else setPreview(null)
+    })
+  }, [appt.id, usePkg, voucherCode, discount, rewardValue, prod])
+  const total = preview ? Number(preview.to_pay) : localTotal
+  const allCovered = !!preview && total === 0 && (preview.packages.length > 0 || !!preview.voucher)
 
   const pay = async (method: string) => {
     if (docKind === 'ricevuta' && !invoice && !nonfiscal) { notifyError(new Error('Scrivi il motivo della ricevuta non fiscale')); return }
     setBusy(method)
-    const body = { register_id: regId, invoice, discount: discount || null, reward_id: reward, payments: [{ method, amount: total.toFixed(2) }], nonfiscal_reason: nonfiscal,
+    const body = { register_id: regId, invoice: allCovered ? false : invoice, discount: discount || null, reward_id: reward, payments: [{ method, amount: total.toFixed(2) }],
+      nonfiscal_reason: allCovered ? null : nonfiscal, voucher_code: voucherCode, use_packages: usePkg,
       products: products.map((p) => ({ item_id: p.item_id, quantity: '1', unit_price_gross: p.price.toFixed(2) })) }
     try {
       let r
@@ -72,9 +88,11 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
       <Modal opened onClose={() => onDone(done.appt)} withCloseButton={false} size="md" centered radius="lg">
         <Stack align="center" ta="center" py="md">
           <ThemeIcon size={84} radius={84} color="green" variant="light"><IconCheck size={48} /></ThemeIcon>
-          <Text fz={26} fw={800}>Fatto! {fmtEuro(done.receipt.total)}</Text>
+          <Text fz={26} fw={800}>Fatto! {Number(done.receipt.total) === 0 && done.receipt.fiscal?.prepaid ? (done.receipt.fiscal.prepaid.voucher ? 'Pagato con il buono' : 'Seduta del pacchetto') : fmtEuro(done.receipt.total)}</Text>
           <Text c="dimmed">{done.receipt.doc_type === 'FTI' ? `Fattura n. ${done.receipt.number} emessa` : done.receipt.fiscal?.nonfiscal ? `Ricevuta non fiscale n. ${done.receipt.number} registrata` : rt ? 'Lo scontrino sta uscendo dal registratore' : 'Pagamento registrato (nessun registratore collegato)'}</Text>
           {client?.loyalty && <Badge size="xl" variant="light" leftSection={<IconGift size={16} />}>Punti fedeltà aggiornati</Badge>}
+          {done.receipt.fiscal?.prepaid?.voucher && <Text fz="lg">Sul buono {done.receipt.fiscal.prepaid.voucher.code} restano <b>{fmtEuro(done.receipt.fiscal.prepaid.voucher.left)}</b></Text>}
+          {(done.receipt.fiscal?.prepaid?.packages ?? []).map((p: any, i: number) => <Text key={i} fz="lg">«{p.name}»: seduta {p.session} di {p.of}, ne restano <b>{p.remaining}</b></Text>)}
           <ReceiptButtons apptId={done.appt.id} />
           <Button size="lg" variant="subtle" onClick={() => onDone(done.appt)}>Chiudi</Button>
         </Stack>
@@ -89,6 +107,8 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
           {appt.items.map((it) => <Group key={it.id} justify="space-between"><Text fz="lg">{it.service}</Text><Text fz="lg">{fmtEuro(it.price)}</Text></Group>)}
           {products.map((p, i) => <Group key={i} justify="space-between"><Text fz="lg">{p.label}</Text><Text fz="lg">{fmtEuro(p.price)}</Text></Group>)}
           {rw && <Group justify="space-between" c="green"><Text fz="lg">🎁 {rw.name}</Text><Text fz="lg">−{fmtEuro(rewardValue || 0)}</Text></Group>}
+          {(preview?.packages ?? []).map((p: any) => <Group key={p.item_id} justify="space-between" c="teal"><Text fz="lg">📦 {p.service}: seduta {p.session} di {p.of}</Text><Text fz="lg">pacchetto</Text></Group>)}
+          {preview?.voucher && <Group justify="space-between" c="grape"><Text fz="lg">🎁 Buono {preview.voucher.code}</Text><Text fz="lg">−{fmtEuro(preview.voucher.use)}</Text></Group>}
           <Group justify="space-between" mt="xs"><Text fz={30} fw={800}>Totale</Text><Text fz={34} fw={800} c="blu" data-testid="pay-total">{fmtEuro(total)}</Text></Group>
         </Paper>
         {client?.loyalty && (
@@ -101,6 +121,33 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
             ) : client.loyalty.next ? <Text size="sm">Ancora {client.loyalty.next.missing} punti per «{client.loyalty.next.name}»</Text> : null}
           </Alert>
         )}
+        {(preview?.packages?.length > 0 || (!preview?.packages?.length && !usePkg)) && (
+          <Alert color="teal" radius="lg" icon={<IconPackage />} title={usePkg ? `Seduta scalata dal pacchetto «${preview.packages[0]?.package}»` : 'Pacchetto non usato'}>
+            <Group justify="space-between">
+              <Text size="sm">{usePkg ? 'Già pagata quando ha comprato il pacchetto: niente scontrino per questa seduta.' : 'La seduta si paga a parte.'}</Text>
+              <Button size="xs" variant="light" color="teal" onClick={() => setUsePkg(!usePkg)}>{usePkg ? 'Non usare il pacchetto' : 'Usa il pacchetto'}</Button>
+            </Group>
+          </Alert>
+        )}
+        {preview?.voucher ? (
+          <Alert color="grape" radius="lg" icon={<IconGift />} title={`Buono ${preview.voucher.code}: usati ${fmtEuro(preview.voucher.use)}`}>
+            <Group justify="space-between"><Text size="sm">Sul buono resteranno <b>{fmtEuro(preview.voucher.left)}</b>{preview.voucher.expires_on ? `, validi fino al ${new Date(preview.voucher.expires_on + 'T12:00').toLocaleDateString('it-IT')}` : ''}.</Text>
+              <Button size="xs" variant="light" color="grape" onClick={() => setVoucherCode(null)}>Togli</Button></Group>
+          </Alert>
+        ) : askVoucher ? (
+          <Group align="flex-end">
+            <TextInput size="md" style={{ flex: 1 }} label="Codice del buono regalo" placeholder="BR-XXXX-XXXX (o leggilo col lettore)" value={voucherInput} data-autofocus data-testid="codice-buono"
+              onChange={(e) => setVoucherInput(e.currentTarget.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && voucherInput.trim()) setVoucherCode(voucherInput.trim()) }} />
+            <Button size="md" color="grape" disabled={!voucherInput.trim()} onClick={() => setVoucherCode(voucherInput.trim())}>Usa il buono</Button>
+          </Group>
+        ) : (
+          <Button variant="light" color="grape" radius="xl" leftSection={<IconGift size={18} />} onClick={() => setAskVoucher(true)} data-testid="paga-con-buono">Paga con un buono regalo</Button>
+        )}
+        {allCovered ? (
+          <Button {...BIG} color="green" leftSection={<IconCheck size={26} />} loading={!!busy} disabled={!!busy || !regId} onClick={() => pay('contanti')} data-testid="conferma-prepagato">
+            Conferma · già pagato {preview?.voucher && preview?.packages?.length ? 'con buono e pacchetto' : preview?.voucher ? 'con il buono' : 'con il pacchetto'}
+          </Button>
+        ) : <>
         {nfAllowed && !invoice && (
           <Paper withBorder radius="lg" p="sm">
             <SegmentedControl fullWidth size="lg" radius="lg" value={docKind} onChange={(v) => setDocKind(v as any)} data-testid="tipo-documento"
@@ -120,6 +167,7 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
           <Button {...BIG} leftSection={<IconCreditCard size={26} />} loading={busy === 'carta'} disabled={!!busy || !regId} onClick={() => pay('carta')}>Carta</Button>
           <Button {...BIG} variant="light" leftSection={<IconCreditCard size={26} />} loading={busy === 'bancomat'} disabled={!!busy || !regId} onClick={() => pay('bancomat')}>Bancomat</Button>
         </SimpleGrid>
+        </>}
         {!regId && <Text c="orange" ta="center">Manca la cassa: chiedi all'amministratore di collegarla in Impostazioni.</Text>}
         <Button variant="subtle" leftSection={<IconSettings size={16} />} onClick={() => setMore(!more)}>{more ? 'Nascondi' : 'Altre opzioni'}: prodotti, sconto, fattura</Button>
         <Collapse in={more}>

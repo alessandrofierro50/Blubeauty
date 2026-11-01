@@ -62,9 +62,10 @@ import Services from './pages/agenda/Services'
 import Shifts from './pages/agenda/Shifts'
 import ReceiptSettings from './pages/pos/ReceiptSettings'
 import Marketing from './pages/marketing/Marketing'
-import Booking, { MyAppointment } from './pages/prenota/Booking'
+import Booking, { MyAppointment, VoucherPage } from './pages/prenota/Booking'
 import NewBooking from './pages/salone/NewBooking'
-import { CardPrint, ReceiptPrint, SaleReceiptPrint } from './pages/salone/Prints'
+import { CardPrint, ReceiptPrint, SaleReceiptPrint, VoucherPrint } from './pages/salone/Prints'
+import Prepaid from './pages/salone/Prepaid'
 import Today from './pages/salone/Today'
 import { useOutletContext } from 'react-router-dom'
 import type { AppCtx } from './pages/app/AppLayout'
@@ -105,8 +106,10 @@ export default function App() {
       <Route path="/prenota/:slug" element={<Booking />} />
       <Route path="/stampa/ricevuta/:id" element={<RequireAuth scope="user"><ReceiptPrint /></RequireAuth>} />
       <Route path="/stampa/scontrino/:id" element={<RequireAuth scope="user"><SaleReceiptPrint /></RequireAuth>} />
+      <Route path="/stampa/buono/:id" element={<RequireAuth scope="user"><VoucherPrint /></RequireAuth>} />
       <Route path="/stampa/tessera/:id" element={<RequireAuth scope="user"><CardPrint /></RequireAuth>} />
       <Route path="/prenota/:slug/a/:token" element={<MyAppointment />} />
+      <Route path="/prenota/:slug/buono/:token" element={<VoucherPage />} />
       <Route path="/" element={<RequireAuth scope="user"><AppLayout /></RequireAuth>}>
         <Route index element={<HomeOrToday />} />
         <Route path="nuovo" element={<NewBooking />} />
@@ -120,6 +123,7 @@ export default function App() {
         <Route path="agenda/servizi" element={<Services />} />
         <Route path="agenda/turni" element={<Shifts />} />
         <Route path="pos/ricevute" element={<ReceiptSettings />} />
+        <Route path="buoni" element={<Prepaid />} />
         <Route path="agenda/impostazioni" element={<AgendaSettings />} />
         <Route path="marketing" element={<Marketing />} />
         <Route path="articoli" element={<Items />} />

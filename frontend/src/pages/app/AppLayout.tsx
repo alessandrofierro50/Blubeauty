@@ -1,6 +1,6 @@
 import { Alert, Anchor, AppShell, Badge, Burger, Button, CloseButton, Divider, Group, Menu, Modal, NavLink, Switch, Text, TextInput, UnstyledButton } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarUser, IconCalendarPlus, IconCalendarDollar, IconSun, IconUserHeart, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook, IconSearch } from '@tabler/icons-react'
+import { IconBrandWhatsapp, IconCalendarEvent, IconCalendarUser, IconGift, IconCalendarPlus, IconCalendarDollar, IconSun, IconUserHeart, IconCreditCard, IconBox, IconBuildingStore, IconBuildingWarehouse, IconCash, IconChartBar, IconChartDots, IconFileInvoice, IconNumbers, IconChevronDown, IconHome, IconKey, IconLogout, IconPrinter, IconReceipt, IconTruck, IconTruckDelivery, IconUsers, IconAddressBook, IconSearch } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -55,7 +55,7 @@ const SECTIONS: Record<string, { label: string; links: [string, string, string?]
   },
   pos: {
     label: 'Cassa',
-    links: [['/cassa', 'Vendita al banco'], ['/pos/aperture', 'Chiusure di cassa'], ['/pos/casse', 'Casse e reparti'], ['/pos/ricevute', 'Ricevute: logo e intestazione'], ['/periferiche', 'Computer e periferiche', 'periferiche'], ['/etichette-modelli', 'Modelli di etichette', 'periferiche']],
+    links: [['/cassa', 'Vendita al banco'], ['/pos/aperture', 'Chiusure di cassa'], ['/pos/casse', 'Casse e reparti'], ['/pos/ricevute', 'Ricevute: logo e intestazione'], ['/buoni', 'Buoni regalo e pacchetti'], ['/periferiche', 'Computer e periferiche', 'periferiche'], ['/etichette-modelli', 'Modelli di etichette', 'periferiche']],
   },
   tentata_vendita: {
     label: 'Tentata vendita',
@@ -89,6 +89,7 @@ const KEYWORDS: Record<string, string> = {
   '/cassa': 'cassa scontrino registratore vendita al banco incasso copia cortesia',
   '/pos/aperture': 'chiusura cassa z fondo cassa quadratura',
   '/pos/casse': 'casse reparti tasti rapidi',
+  '/buoni': 'buono regalo gift card pacchetto sedute abbonamento prepagato credito residuo',
   '/pos/ricevute': 'ricevuta non fiscale logo intestazione scontrino cortesia stampa saluti',
   '/periferiche': 'registratore telematico stampante termica agent periferiche',
   '/acquisti': 'acquisti ordini fornitore ddt fatture passive',
@@ -246,6 +247,7 @@ export default function AppLayout() {
               ['/agenda/turni', 'Turni e assenze', IconCalendarUser, null],
               ['/marketing', 'Messaggi e punti', IconBrandWhatsapp, null],
               ['/cassa', 'Cassa e prodotti', IconCash, 'pos'],
+              ['/buoni', 'Buoni e pacchetti', IconGift, 'pos'],
               ...(me.user.role === 'amministratore' ? [['/agenda/impostazioni', 'Impostazioni del salone', IconBuildingStore, null]] : []),
             ].filter(([, , , mod]) => !mod || status.menu.some((x: any) => x.code === mod && x.enabled)).map(([to, label, Icon]: any) => (
               <NavLink key={to} label={<Text fz={18} fw={600}>{label}</Text>} leftSection={<Icon size={26} />} py={14} style={{ borderRadius: 12 }}

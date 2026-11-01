@@ -9,7 +9,7 @@ export function Barcode({ value, height = 40 }: { value: string; height?: number
   return <svg ref={ref} style={{ maxWidth: '100%' }} />
 }
 
-function Qr({ value }: { value: string }) {
+export function Qr({ value }: { value: string }) {
   const [src, setSrc] = useState('')
   useEffect(() => { QRCode.toDataURL(value, { margin: 0, width: 140 }).then(setSrc) }, [value])
   return src ? <img src={src} width={110} height={110} alt="" /> : null

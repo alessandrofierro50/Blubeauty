@@ -53,6 +53,18 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   da `service.save_absence`): la risposta elenca gli appuntamenti già presi da spostare (`absence_conflicts`), con
   «Avvisa» su WhatsApp (wa.me) e «Apri» in agenda. Test: `tests/test_turni.py`.
 
+## Buoni regalo e pacchetti di sedute (`app/prepagati/`, pagina `/buoni`; migrazione `0027_prepagati`)
+- `service.py` è l'unico punto che scrive buoni (`gift_vouchers` + `gift_voucher_moves`), listino pacchetti (`service_packages`),
+  pacchetti venduti (`client_packages`) e sedute usate (`client_package_uses`). Ricerca e regole fiscali:
+  `docs/BUONI-PACCHETTI-CONCORRENTI.md` (buono «monouso»: scontrino alla VENDITA, niente scontrino all'utilizzo).
+- Vendita (buono a importo o per un servizio, pacchetto) = `pos.create_sale` con `no_promos` (niente promozioni di cassa).
+- Incasso dell'appuntamento (`agenda.service.checkout`, `plan_checkout`/`apply_plan`): prima le sedute coperte da un pacchetto
+  (prezzo 0), poi sconti e premio, poi il buono (prima servizi, poi prodotti); scontrino solo per la differenza; se è tutto
+  coperto, ricevuta NON fiscale automatica (motivo «Utilizzo di un buono…» / «Seduta di un pacchetto…»). Riepilogo in
+  `Document.fiscal["prepaid"]` stampato su ricevute (`receipt_lines`). Anteprima `GET /api/agenda/appuntamenti/{id}/prepagati`.
+- Codice `BR-XXXX-XXXX` (lettere senza ambiguità), pagina pubblica `/prenota/<slug>/buono/<token>` (link WhatsApp), biglietto
+  A6 `/stampa/buono/:id` (o 80 mm), termica `POST /api/prepagati/buoni/{id}/stampa`. Test: `tests/test_prepagati.py`.
+
 ## Fidelity, ricevuta non fiscale, modalità semplice
 - Raccolta punti (`app/marketing/loyalty.py`, unico punto che scrive `loyalty_*` e il saldo copiato in
   `agenda_client_profiles.loyalty_points`): saldo = somma di `loyalty_moves`; accrediti con `dedupe_key` (indice unico parziale);
@@ -128,7 +140,9 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 - [ ] WhatsApp Business: numero del salone, modelli approvati da Meta per promemoria/marketing (`docs/WHATSAPP.md`).
 - [ ] Collaudo con registratore telematico vero (Epson/Custom) e stampante termica in un salone pilota.
 - [ ] Casella `blubeauty@blucodeinformatica.it` da creare su Aruba; installazione sulla VPS (DNS, nginx, certbot).
-- [ ] Da valutare: pacchetti a sedute e gift card, firma su tablet dei consensi, agenda settimanale e trascinamento.
+- [x] 2026-11-01 — buoni regalo (residuo, biglietto, WhatsApp, pagina pubblica) e pacchetti di sedute a scalare.
+- [ ] Da valutare: abbonamenti ricorrenti, vendita online di buoni e pacchetti, firma su tablet dei consensi e delle condizioni,
+      agenda settimanale e trascinamento, «Paga con buono» anche nella cassa al banco.
 
 ## Progetto BluCode — leggere prima di lavorare
 Questo repository è BluBeauty, una parte del progetto BluCode Informatica. La memoria condivisa del progetto è il repository **`alessandrofierro50/Progetto_blucode_informatica`** (parte: `blubeauty`).
