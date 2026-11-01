@@ -473,6 +473,8 @@ def create_sale(db: Session, reg: PosRegister, user_id, body: dict) -> tuple[Doc
     pays, change = _payments(total, payments)
     sales.confirm_sale(db, d, user_id, force=True)
     d.fiscal = {**d.fiscal, "change": str(change), "rt": None, "simulated": True}
+    if body.get("prepaid"):  # buono regalo e pacchetti usati: riepilogo per le ricevute (residuo, sedute rimaste)
+        d.fiscal["prepaid"] = body["prepaid"]
     if nonfiscal:  # ricevuta NON fiscale al posto dello scontrino: niente documento commerciale, resta tutto registrato
         d.fiscal["nonfiscal"] = {"reason": nonfiscal, "by": str(user_id) if user_id else None}
     for p in pays:

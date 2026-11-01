@@ -59,6 +59,9 @@ def build(db: Session, tenant_id, appt: Appointment, with_marketing: bool = True
         rt = (doc.fiscal or {}).get("rt") or {}
         what = "Fattura" if doc.doc_type == "FTI" else "Ricevuta non fiscale" if (doc.fiscal or {}).get("nonfiscal") else "Scontrino fiscale"
         L.append({"text": f"{what} n. {rt.get('number') or doc.number} del {doc.doc_date.strftime('%d/%m/%Y')}"})
+        if (doc.fiscal or {}).get("prepaid"):  # buono regalo e pacchetti: credito residuo e sedute rimaste
+            from app.prepagati.service import receipt_lines
+            L += [{"type": "feed"}] + receipt_lines(doc.fiscal["prepaid"])
     if party and with_marketing:
         from app.marketing import loyalty
         if loyalty.settings(db, tenant_id).enabled:

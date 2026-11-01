@@ -169,10 +169,16 @@ def document_receipt(db: Session, d, pays: list, register_name: str = "") -> dic
     change = Decimal(str((d.fiscal or {}).get("change") or 0))
     for p in pays:
         got = p.tendered if p.tendered is not None else p.amount
+        if not got:  # pagato tutto con buono o pacchetto: niente riga «0,00»
+            continue
         L.append({"text": LABELS.get(p.method, p.method.replace("_", " ").capitalize()), "right": _eur(abs(Decimal(str(got))))})
     if change > 0:
         L.append({"text": "Resto", "right": _eur(change)})
     L.append({"text": "Importo pagato" if d.doc_type != "RSO" else "Importo rimborsato", "right": _eur(abs(Decimal(str(d.total))))})
+    prepaid = (d.fiscal or {}).get("prepaid")
+    if prepaid:  # buono regalo e pacchetti: credito residuo e sedute rimaste
+        from app.prepagati.service import receipt_lines
+        L += [{"type": "line"}] + receipt_lines(prepaid)
     L.append({"type": "line"})
     when = d.created_at.astimezone(TZ).strftime("%d-%m-%Y %H:%M") if d.created_at else d.doc_date.strftime("%d-%m-%Y")
     num = f"{'RNF' if nonfiscal else d.doc_type} N. {d.number:04d}" if isinstance(d.number, int) else ""

@@ -538,8 +538,13 @@ def move(db: Session, tenant_id, appt: Appointment, start: datetime, staff_id=No
 def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id, payments: list[dict],
              invoice: bool = False, products: list[dict] | None = None, discount: Decimal | None = None,
              lottery_code: str | None = None, rt_result: dict | None = None, marketing: bool = False, reward_id=None,
-             nonfiscal_reason: str | None = None):
-    """Incasso dell'appuntamento dalla cassa: scontrino (documento commerciale sul registratore) o fattura."""
+             nonfiscal_reason: str | None = None, voucher_code: str | None = None, voucher_amount=None,
+             use_packages: bool = True):
+    """Incasso dell'appuntamento dalla cassa: scontrino (documento commerciale sul registratore) o fattura.
+
+    Buoni regalo e pacchetti (app/prepagati): le sedute coperte da un pacchetto e la parte pagata col buono sono già state
+    certificate alla vendita, quindi escono dal totale; lo scontrino è solo per la differenza. Se è tutto coperto si stampa
+    una ricevuta NON fiscale con il riepilogo (residuo del buono, sedute rimaste)."""
     from app.documenti.models import Document
     from app.pos import service as pos
     from app.pos.models import PosRegister
@@ -556,6 +561,11 @@ def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id,
     party = db.get(Party, appt.party_id) if appt.party_id else None
     if invoice and party is None:
         raise fail("Per la fattura serve il cliente")
+    from app.prepagati import service as prepaid
+    products = products or []
+    plan = prepaid.plan_checkout(db, appt, voucher_code=voucher_code, voucher_amount=voucher_amount, use_packages=use_packages)
+    for it, _cp, _n, _tot in plan["covered"]:
+        it.price = Decimal(0)  # seduta del pacchetto: già pagata e certificata alla vendita del pacchetto
     from app.marketing import loyalty
     reward = loyalty.check_redeem(db, tenant_id, party, reward_id) if reward_id and marketing else None
     total_discount = Decimal(str(discount or 0))
@@ -565,14 +575,43 @@ def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id,
                                                   {i.service_id: i.price for i in appt.items})
     if total_discount > 0:
         apply_discount(appt, total_discount)
+    # buono regalo: prima sui servizi, poi sui prodotti; il credito che avanza resta sul buono
+    services_left = sum((i.price for i in appt.items), Decimal(0))
+    products_left = sum((Decimal(str(p["unit_price_gross"])) * Decimal(str(p.get("quantity") or 1)) for p in products), Decimal(0))
+    if plan["voucher"] is not None:
+        want = prepaid.q(voucher_amount) if voucher_amount not in (None, "") else plan["voucher"].balance
+        plan["voucher_amount"] = prepaid.q(min(want, plan["voucher"].balance, services_left + products_left))
+        on_services = min(plan["voucher_amount"], services_left)
+        apply_discount(appt, on_services)
+        rest = plan["voucher_amount"] - on_services
+        for pr in products:
+            if rest <= 0:
+                break
+            qty = Decimal(str(pr.get("quantity") or 1))
+            line_total = Decimal(str(pr["unit_price_gross"])) * qty
+            cut = min(rest, line_total)
+            pr["unit_price_gross"] = str(((line_total - cut) / qty).quantize(Decimal("0.0001")))
+            rest -= cut
+    to_pay = prepaid.q(sum((i.price for i in appt.items), Decimal(0))
+                       + sum((Decimal(str(p["unit_price_gross"])) * Decimal(str(p.get("quantity") or 1)) for p in products), Decimal(0)))
+    covered_all = to_pay == 0 and (plan["covered"] or plan["voucher_amount"] > 0)
+    if covered_all:  # tutto coperto da buono o pacchetto: ricevuta non fiscale, nessun nuovo scontrino
+        invoice = False
+        payments = [{"method": "buono", "amount": "0"}]
+        nonfiscal_reason = prepaid.REASON_PACKAGE if plan["covered"] else prepaid.REASON_VOUCHER
+    elif payments and len(payments) == 1 and (payments[0].get("method") != "contanti"
+                                              or Decimal(str(payments[0].get("amount") or 0)) < to_pay):
+        payments = [{**payments[0], "amount": str(to_pay)}]  # importo esatto da pagare dopo buono e pacchetti
     lines = []
     for it in appt.items:
+        if it.price == 0 and not covered_all and (plan["covered"] or plan["voucher_amount"] > 0):
+            continue  # seduta coperta: non va nello scontrino della differenza (è nel riepilogo della ricevuta)
         svc = db.get(AgendaService, it.service_id)
         dep = svc.department_id or cfg.department_id
         lines.append({"description": svc.name, "quantity": "1", "unit_price_gross": str(it.price),
                       "vat_rate_id": str(svc.vat_rate_id) if svc.vat_rate_id else None,
                       "department_id": str(dep) if dep else None, "price_source": "Agenda"})
-    for p in products or []:
+    for p in products:
         lines.append({"item_id": str(p["item_id"]), "variant_id": p.get("variant_id"), "quantity": str(p.get("quantity") or 1),
                       "unit_price_gross": str(p["unit_price_gross"]), "price_source": "Agenda"})
     body = {
@@ -584,8 +623,11 @@ def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id,
         "lottery_code": lottery_code,
         "rt_result": rt_result,
         "nonfiscal_reason": nonfiscal_reason,  # ricevuta non fiscale al posto dello scontrino
+        "prepaid": prepaid.summary(plan) if (plan["covered"] or plan["voucher_amount"] > 0) else None,
     }
     d, change, replay = pos.create_sale(db, reg, user_id, body)
+    if not replay:
+        prepaid.apply_plan(db, plan, appt, d.id, user_id)
     appt.document_id, appt.status = d.id, "pagato"
     if party is not None and not replay and marketing:
         before = loyalty.balance(db, party.id)
@@ -609,13 +651,14 @@ def checkout(db: Session, tenant_id, appt: Appointment, user_id, *, register_id,
 
 def apply_discount(appt: Appointment, discount: Decimal) -> None:
     """Sconto sul totale ripartito in proporzione sui prezzi dei servizi (al centesimo, il resto sull'ultimo)."""
-    total = sum((i.price for i in appt.items), Decimal(0))
+    items = [i for i in appt.items if i.price > 0]
+    total = sum((i.price for i in items), Decimal(0))
     discount = min(Decimal(str(discount)), total)
     if discount <= 0 or total <= 0:
         return
     left = discount
-    for n, it in enumerate(appt.items):
-        cut = left if n == len(appt.items) - 1 else (it.price * discount / total).quantize(Decimal("0.01"))
+    for n, it in enumerate(items):
+        cut = left if n == len(items) - 1 else min(it.price, (it.price * discount / total).quantize(Decimal("0.01")))
         it.price -= cut
         left -= cut
 

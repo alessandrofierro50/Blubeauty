@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.agenda.public_router import router as prenota_router
 from app.agenda.router import router as agenda_router
+from app.prepagati.router import router as prepagati_router
 from app.anagrafiche.router import router as anagrafiche_router
 from app.marketing.router import router as marketing_router
 from app.auth.router import router as auth_router
@@ -47,6 +48,7 @@ app.include_router(public_router)
 app.include_router(console_router)
 app.include_router(app_router)
 app.include_router(agenda_router)
+app.include_router(prepagati_router)
 app.include_router(prenota_router)
 app.include_router(marketing_router)
 app.include_router(anagrafiche_router)

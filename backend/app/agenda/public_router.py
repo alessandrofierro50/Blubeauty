@@ -138,3 +138,24 @@ def cancel(slug: str, token: str, request: Request, db: Session = Depends(get_db
     tid, a = _by_token(db, slug, token)
     svc.cancel(db, tid, a, by_client=True)
     return my_appointment(slug, token, request, db)
+
+
+@router.get("/{slug}/buono/{token}")
+def gift_voucher(slug: str, token: str, request: Request, db: Session = Depends(get_db)):
+    """Il buono regalo per chi lo riceve (link mandato su WhatsApp): valore, credito residuo, scadenza, codice."""
+    from app.prepagati.models import GiftVoucher
+    from app.prepagati import service as prepaid
+    rate_limit(f"prenota:buono:{_ip(request)}", 60, 60)
+    page = db.get(BookingPage, slug.lower())
+    if page is None or len(token) < 20:
+        raise HTTPException(404, "Buono non trovato")
+    set_tenant(db, page.tenant_id)
+    v = db.scalar(select(GiftVoucher).where(GiftVoucher.public_token == token))
+    if v is None:
+        raise HTTPException(404, "Buono non trovato")
+    out = prepaid.voucher_out(db, v)
+    from app.core.models import Company
+    co = db.scalar(select(Company).order_by(Company.name))
+    return {k: out[k] for k in ("code", "kind", "service", "initial_amount", "balance", "status", "expires_on", "beneficiary_name", "message")} | {
+        "salon": svc.salon_name(db, page.tenant_id), "booking_url": svc.public_link(db, page.tenant_id),
+        "address": " ".join(x for x in [co.address, co.zip_code, co.city] if x) if co else None, "phone": co.phone if co else None}

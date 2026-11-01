@@ -579,6 +579,20 @@ class CheckoutIn(BaseModel):
     rt_result: dict | None = None
     reward_id: uuid.UUID | None = None  # premio fedeltà riscattato
     nonfiscal_reason: str | None = Field(None, max_length=120)  # ricevuta non fiscale al posto dello scontrino
+    voucher_code: str | None = Field(None, max_length=20)  # buono regalo usato (anche in parte)
+    voucher_amount: Decimal | None = Field(None, gt=0)  # vuoto = tutto il credito utile
+    use_packages: bool = True  # scala le sedute dai pacchetti della cliente
+
+
+@router.get("/appuntamenti/{appt_id}/prepagati")
+def checkout_preview(appt_id: uuid.UUID, buono: str | None = None, importo: Decimal | None = None, pacchetti: bool = True,
+                     sconto: Decimal | None = None, prodotti: Decimal | None = None, ctx: TenantContext = Depends(reader)):
+    """Anteprima dell'incasso: sedute coperte dai pacchetti della cliente, credito usato del buono, totale da pagare."""
+    from app.prepagati import service as prepaid
+    a = _get(ctx, Appointment, appt_id)
+    plan = prepaid.plan_checkout(ctx.db, a, voucher_code=buono or None, voucher_amount=importo, use_packages=pacchetti,
+                                 products_total=prodotti or Decimal(0), discount=sconto or Decimal(0))
+    return prepaid.plan_out(ctx.db, plan)
 
 
 @router.post("/appuntamenti/{appt_id}/incassa")
@@ -598,7 +612,8 @@ def checkout(appt_id: uuid.UUID, body: CheckoutIn, ctx: TenantContext = Depends(
         payments=[{"method": p.method, "amount": str(p.amount)} for p in body.payments], invoice=body.invoice,
         products=[p.model_dump(mode="json") for p in body.products], discount=body.discount,
         lottery_code=body.lottery_code, rt_result=body.rt_result, marketing="marketing" in ctx.state.modules, reward_id=body.reward_id,
-        nonfiscal_reason=body.nonfiscal_reason)
+        nonfiscal_reason=body.nonfiscal_reason, voucher_code=body.voucher_code, voucher_amount=body.voucher_amount,
+        use_packages=body.use_packages)
     from app.pos import service as pos
     return {"appointment": appointment_out(ctx, a, full=True), "receipt": pos.receipt_out(ctx.db, d),
             "change": s(change), "replayed": replay}

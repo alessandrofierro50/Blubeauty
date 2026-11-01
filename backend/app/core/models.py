@@ -286,6 +286,7 @@ TENANT_TABLES += [
     "agenda_settings", "agenda_staff", "agenda_resources", "agenda_service_categories", "agenda_services",
     "agenda_service_staff", "agenda_service_resources", "agenda_client_profiles", "agenda_technical_cards",
     "agenda_appointments", "agenda_appointment_items", "agenda_absences",
+    "gift_vouchers", "gift_voucher_moves", "service_packages", "client_packages", "client_package_uses",
     "marketing_settings", "messages", "automations", "campaigns",
     "loyalty_settings", "loyalty_rewards", "loyalty_cards", "loyalty_moves",
 ]
@@ -301,4 +302,5 @@ from app.bi import models as _bi_models  # noqa: E402,F401
 from app.tentata import models as _tentata_models  # noqa: E402,F401
 from app.pagamenti import models as _pagamenti_models  # noqa: E402,F401
 from app.agenda import models as _agenda_models  # noqa: E402,F401
+from app.prepagati import models as _prepagati_models  # noqa: E402,F401
 from app.marketing import models as _marketing_models  # noqa: E402,F401
