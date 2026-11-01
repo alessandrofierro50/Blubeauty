@@ -67,6 +67,8 @@ def stripe_checkout(*, payment_id: str, tenant_id: str, description: str, total:
         "success_url": success_url,
         "cancel_url": cancel_url,
     }
+    if s.stripe_tax_code:
+        form["line_items[0][price_data][product_data][tax_code]"] = s.stripe_tax_code
     if email:
         form["customer_email"] = email
     with _http() as c:

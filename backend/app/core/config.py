@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     # Un metodo compare solo se è in PAGAMENTI_METODI e ha le sue chiavi; le chiavi stanno solo nel .env del server.
     pagamenti_metodi: str = "carta,paypal,bonifico"
     stripe_secret_key: str = ""  # sk_test_... / sk_live_...
+    stripe_tax_code: str = ""  # solo se Stripe lo chiede (Managed Payments): es. txcd_10103001 (software SaaS, uso aziendale)
     stripe_webhook_secret: str = ""  # whsec_... dell'endpoint /api/pagamenti/webhook/stripe
     paypal_client_id: str = ""
     paypal_secret: str = ""
