@@ -4,7 +4,7 @@
 
 import {
   ActionIcon, Alert, Badge, Box, Button, Center, Divider, Group, Kbd, Loader, Modal, NumberInput, Paper, ScrollArea, SegmentedControl,
-  SimpleGrid, Stack, Switch, Table, Text, TextInput, Title, Tooltip, UnstyledButton,
+  Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Title, Tooltip, UnstyledButton,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import {
@@ -140,6 +140,10 @@ function Register({ id }: { id: string }) {
   function print(kind: 'receipt' | 'session', data: any) {
     if (kind === 'receipt' && periph?.devices?.printer && data?.id && !data.offline) {  // stampante termica della cassa
       P(`/scontrini/${data.id}/stampa`, { method: 'POST' }).then(() => notifications.show({ message: 'Ricevuta inviata alla stampante' })).catch(notifyError)
+      return
+    }
+    if (kind === 'receipt' && data?.id && !data.offline) {  // dal computer: stessa grafica della termica (logo, intestazione)
+      window.open(`/stampa/scontrino/${data.id}`, 'ricevuta', 'popup,width=420,height=760')
       return
     }
     setPrinting({ kind, data })
@@ -428,7 +432,7 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
       if (isNetworkError(e) && !body.invoice_party_id) {
         setOnline(false)
         let fiscal: any = null
-        if (rt && periph?.devices?.rt) {  // documento commerciale stampato tramite l'agent sul computer della cassa
+        if (rt && periph?.devices?.rt && !body.nonfiscal_reason) {  // documento commerciale stampato tramite l'agent sul computer della cassa
           try {
             body.rt_result = await localAgent(periph, 'rt', kind === 'vendita' ? 'rt.receipt' : 'rt.refund', rt)
             fiscal = { rt: { status: 'emesso', offline: true, ...body.rt_result } }
@@ -447,14 +451,14 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
     }
   }
 
-  async function pay(payments: { method: string; amount: number }[], lottery: string | null) {
+  async function pay(payments: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null = null) {
     const paid = payments.reduce((a, p) => a + p.amount, 0)
     const body: any = {
-      client_uuid: uuid4(), session_id: session.id, lines: lines.map(lineBody), lottery_code: lottery,
+      client_uuid: uuid4(), session_id: session.id, lines: lines.map(lineBody), lottery_code: nonfiscal ? null : lottery, nonfiscal_reason: nonfiscal,
       payments: payments.map((p) => ({ method: p.method, amount: centsStr(p.amount) })),
       customer_id: customer && !invoice ? customer.id : null, invoice_party_id: customer && invoice ? customer.id : null,
     }
-    const rt = !body.invoice_party_id ? rtPayload(cat, lines, promoLines, payments, lottery, (l) => lineBody(l).description) : undefined
+    const rt = !body.invoice_party_id && !nonfiscal ? rtPayload(cat, lines, promoLines, payments, lottery, (l) => lineBody(l).description) : undefined
     if (await submit('vendita', body, total, paid - total, rt)) { clearCart(); setModal(null) }
   }
 
@@ -609,7 +613,8 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
           ))}
         </SimpleGrid>
       </Modal>
-      {modal === 'pay' && !refundMode && <PayModal total={total} invoice={invoice ? customer : null} lottery={!!cat.settings?.lottery && !invoice} onClose={() => setModal(null)} onPay={pay} />}
+      {modal === 'pay' && !refundMode && <PayModal total={total} invoice={invoice ? customer : null} lottery={!!cat.settings?.lottery && !invoice}
+        nonfiscalAllowed={!invoice && reg.settings?.nonfiscal_allowed !== false && online} onClose={() => setModal(null)} onPay={pay} />}
       {modal === 'pay' && refundMode && <RefundModal total={total} onClose={() => setModal(null)} onRefund={refundCart} />}
       {modal === 'search' && <SearchModal cat={cat} onClose={() => setModal(null)} onPick={(it) => { addItem({ item: it }, mult ?? undefined); setMult(null); setModal(null) }} />}
       {modal === 'customer' && <CustomerModal current={customer} invoice={invoice} onClose={() => setModal(null)} online={online}
@@ -653,10 +658,10 @@ function FiscalBadge({ rt, onRetry }: { rt: any; onRetry?: () => void }) {
 function LastSale({ last, onPrint, onRt, onRetry }: { last: any; onPrint: () => void; onRt?: () => void; onRetry: () => void }) {
   return (
     <Stack align="center" gap={4}>
-      <Text c="dimmed">{last.offline ? 'Ultimo scontrino (in attesa di invio)' : last.doc_type === 'RSO' ? `Reso n. ${last.number} registrato` : last.doc_type === 'FTI' ? `Fattura n. ${last.number}/${last.year} emessa` : `Scontrino n. ${last.number} registrato`}</Text>
+      <Text c="dimmed">{last.offline ? 'Ultimo scontrino (in attesa di invio)' : last.fiscal?.nonfiscal ? `Ricevuta non fiscale n. ${last.number} · ${last.fiscal.nonfiscal.reason}` : last.doc_type === 'RSO' ? `Reso n. ${last.number} registrato` : last.doc_type === 'FTI' ? `Fattura n. ${last.number}/${last.year} emessa` : `Scontrino n. ${last.number} registrato`}</Text>
       <Text fw={700} size="xl">Totale {euro(toCents(last.total))}</Text>
       {Number(last.change) > 0 && <Text fw={800} c="green.8" style={{ fontSize: 44 }}>Resto {euro(toCents(last.change))}</Text>}
-      <FiscalBadge rt={last.fiscal?.rt} onRetry={last.offline ? undefined : onRetry} />
+      {last.fiscal?.nonfiscal ? <Badge size="lg" color="grape" variant="light">Ricevuta non fiscale</Badge> : <FiscalBadge rt={last.fiscal?.rt} onRetry={last.offline ? undefined : onRetry} />}
       {!last.offline && (
         <Group mt="sm" gap="xs">
           {onRt && last.doc_type === 'SCO' && <Button leftSection={<IconPrinter size={16} />} onClick={onRt}>Copia di cortesia sul registratore</Button>}
@@ -729,9 +734,16 @@ function PromptModal({ p, market, onClose }: { p: Prompt | null; market: boolean
   )
 }
 
-function PayModal({ total, invoice, lottery, onClose, onPay }: {
-  total: number; invoice: any; lottery: boolean; onClose: () => void; onPay: (p: { method: string; amount: number }[], lottery: string | null) => Promise<void>
+const NONFISCAL_REASONS = ['Buono regalo venduto', 'Pagamento di una fattura già emessa', 'Altro motivo']
+
+function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }: {
+  total: number; invoice: any; lottery: boolean; nonfiscalAllowed: boolean; onClose: () => void
+  onPay: (p: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null) => Promise<void>
 }) {
+  const [doc, setDoc] = useState<'scontrino' | 'ricevuta'>('scontrino')
+  const [reason, setReason] = useState(NONFISCAL_REASONS[0])
+  const [other, setOther] = useState('')
+  const nonfiscal = doc === 'ricevuta' ? (reason === 'Altro motivo' ? other.trim() : reason) : null
   const [pays, setPays] = useState<{ method: string; amount: number }[]>([])
   const [amount, setAmount] = useState('')
   const [lot, setLot] = useState('')
@@ -740,7 +752,7 @@ function PayModal({ total, invoice, lottery, onClose, onPay }: {
   const residual = total - paid
   const change = paid - total
   const cash = pays.filter((p) => p.method === 'contanti').reduce((a, p) => a + p.amount, 0)
-  const valid = residual <= 0 && (change === 0 || cash >= change) && (!lot || /^[A-Z0-9]{8}$/i.test(lot))
+  const valid = residual <= 0 && (change === 0 || cash >= change) && (!lot || /^[A-Z0-9]{8}$/i.test(lot)) && (doc === 'scontrino' || !!nonfiscal)
   const typed = amount.trim() ? toCents(parseAmount(amount, false)) : residual
   const add = (method: string, cents?: number) => {
     const c = cents ?? typed
@@ -749,7 +761,7 @@ function PayModal({ total, invoice, lottery, onClose, onPay }: {
     setPays((x) => [...x, { method, amount: c }])
     setAmount('')
   }
-  const confirm = async () => { if (!valid || busy) return; setBusy(true); await onPay(pays, lot ? lot.toUpperCase() : null); setBusy(false) }
+  const confirm = async () => { if (!valid || busy) return; setBusy(true); await onPay(pays, lot ? lot.toUpperCase() : null, nonfiscal); setBusy(false) }
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && valid) { e.preventDefault(); confirm() }
@@ -796,11 +808,25 @@ function PayModal({ total, invoice, lottery, onClose, onPay }: {
         </Table>
       )}
       {change > 0 && cash < change && <Alert color="red" mt="sm">Il resto si dà solo sul contante: togli l'eccedenza su carta o buoni.</Alert>}
-      {lottery && <TextInput mt="md" label="Codice lotteria degli scontrini (facoltativo)" maxLength={8} value={lot} onChange={(e) => setLot(e.currentTarget.value.toUpperCase())} />}
+      {nonfiscalAllowed && (
+        <Paper withBorder p="sm" mt="md" radius="md">
+          <SegmentedControl fullWidth size="md" value={doc} onChange={(v) => setDoc(v as any)} data-testid="tipo-documento"
+            data={[{ value: 'scontrino', label: 'Scontrino fiscale' }, { value: 'ricevuta', label: 'Ricevuta non fiscale' }]} />
+          {doc === 'ricevuta' && (
+            <Stack gap={6} mt="sm">
+              <Select label="Motivo (stampato sulla ricevuta)" data={NONFISCAL_REASONS} value={reason} onChange={(v) => setReason(v || NONFISCAL_REASONS[0])} allowDeselect={false} />
+              {reason === 'Altro motivo' && <TextInput placeholder="Scrivi il motivo" maxLength={120} value={other} onChange={(e) => setOther(e.currentTarget.value)} data-autofocus />}
+              <Text size="xs" c="dimmed">Esce sul registratore come documento non fiscale. Usala solo quando lo scontrino non è dovuto:
+                ogni incasso va certificato con scontrino o fattura.</Text>
+            </Stack>
+          )}
+        </Paper>
+      )}
+      {lottery && doc === 'scontrino' && <TextInput mt="md" label="Codice lotteria degli scontrini (facoltativo)" maxLength={8} value={lot} onChange={(e) => setLot(e.currentTarget.value.toUpperCase())} />}
       <Group justify="space-between" mt="lg">
         <Button variant="default" onClick={onClose}>Indietro</Button>
         <Button size="lg" color="green" disabled={!valid} loading={busy} onClick={confirm} rightSection={<Kbd>Invio</Kbd>}>
-          {invoice ? 'Emetti fattura' : 'Chiudi scontrino'}
+          {invoice ? 'Emetti fattura' : doc === 'ricevuta' ? 'Stampa ricevuta non fiscale' : 'Chiudi scontrino'}
         </Button>
       </Group>
     </Modal>

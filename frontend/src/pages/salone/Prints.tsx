@@ -18,32 +18,55 @@ function Qr({ value }: { value: string }) {
   return src ? <img src={src} width={110} height={110} alt="" /> : null
 }
 
-/** Ricevuta non fiscale 80 mm: stesse righe che vanno alla termica o al registratore. */
-export function ReceiptPrint() {
-  const { id } = useParams()
-  const [lines, setLines] = useState<any[] | null>(null)
-  useEffect(() => { appApi(`/api/agenda/appuntamenti/${id}/ricevuta`).then((r) => setLines(r.lines)) }, [id])
-  useEffect(() => { if (lines) setTimeout(() => window.print(), 400) }, [lines])
-  if (!lines) return null
+/** Righe di una ricevuta (formato neutro dell'agent) disegnate come lo scontrino: carattere a spaziatura fissa,
+ *  colonne a destra, logo in alto. Le usano la stampa dal computer e l'anteprima delle impostazioni «Ricevute». */
+export function ReceiptLines({ lines, width = '72mm' }: { lines: any[]; width?: string }) {
   return (
-    <div style={{ width: '72mm', margin: '0 auto', fontFamily: "'Source Sans 3', sans-serif", fontSize: 13, color: '#000', padding: '4mm 0' }}>
-      <style>{'@page { size: 80mm auto; margin: 0 } @media print { body { margin: 0 } }'}</style>
+    <div style={{ width, margin: '0 auto', fontFamily: "'DejaVu Sans Mono', 'Consolas', 'Courier New', monospace", fontSize: 12, lineHeight: 1.35, color: '#000', padding: '4mm 0' }}>
       {lines.map((ln, i) => {
         const t = ln.type ?? 'text'
         if (t === 'cut') return null
         if (t === 'feed') return <div key={i} style={{ height: 8 }} />
         if (t === 'line') return <div key={i} style={{ borderTop: '1px dashed #000', margin: '5px 0' }} />
-        if (t === 'barcode') return <div key={i} style={{ textAlign: 'center' }}><Barcode value={ln.data} /><div style={{ fontSize: 11 }}>{ln.label}</div></div>
+        if (t === 'image') return ln.logo_url ? <div key={i} style={{ textAlign: 'center', marginBottom: 6 }}><img src={ln.logo_url} alt="" style={{ maxWidth: '100%', maxHeight: 90, objectFit: 'contain', filter: 'grayscale(1)' }} /></div> : null
+        if (t === 'barcode') return <div key={i} style={{ textAlign: 'center' }}><Barcode value={ln.data} /><div style={{ fontSize: 11 }}>{ln.label ?? ln.data}</div></div>
         if (t === 'qr') return <div key={i} style={{ textAlign: 'center' }}><Qr value={ln.data} /></div>
         return (
-          <div key={i} style={{ display: 'flex', justifyContent: ln.right ? 'space-between' : ln.align === 'center' ? 'center' : 'flex-start',
-            fontWeight: ln.bold ? 700 : 400, fontSize: ln.size >= 2 ? 18 : 13, textAlign: ln.align ?? 'left' }}>
-            <span>{ln.text}</span>{ln.right && <span>{ln.right}</span>}
+          <div key={i} style={{ display: 'flex', gap: 8, justifyContent: ln.right ? 'space-between' : ln.align === 'center' ? 'center' : ln.align === 'right' ? 'flex-end' : 'flex-start',
+            fontWeight: ln.bold ? 700 : 400, fontSize: ln.size >= 2 ? 17 : 12, textAlign: ln.align ?? 'left' }}>
+            <span style={{ whiteSpace: 'pre-wrap' }}>{ln.text}</span>{ln.right && <span style={{ whiteSpace: 'pre', flexShrink: 0 }}>{ln.right}</span>}
           </div>
         )
       })}
     </div>
   )
+}
+
+function PrintPage({ lines }: { lines: any[] | null }) {
+  useEffect(() => { if (lines) setTimeout(() => window.print(), 400) }, [lines])
+  if (!lines) return null
+  return (
+    <>
+      <style>{'@page { size: 80mm auto; margin: 0 } @media print { body { margin: 0 } }'}</style>
+      <ReceiptLines lines={lines} />
+    </>
+  )
+}
+
+/** Ricevuta dell'appuntamento 80 mm: stesse righe che vanno alla termica o al registratore. */
+export function ReceiptPrint() {
+  const { id } = useParams()
+  const [lines, setLines] = useState<any[] | null>(null)
+  useEffect(() => { appApi(`/api/agenda/appuntamenti/${id}/ricevuta`).then((r) => setLines(r.lines)) }, [id])
+  return <PrintPage lines={lines} />
+}
+
+/** Ricevuta di uno scontrino della cassa (copia di cortesia o ricevuta non fiscale) stampata dal computer. */
+export function SaleReceiptPrint() {
+  const { id } = useParams()
+  const [lines, setLines] = useState<any[] | null>(null)
+  useEffect(() => { appApi(`/api/pos/scontrini/${id}/ricevuta`).then((r) => setLines(r.lines)) }, [id])
+  return <PrintPage lines={lines} />
 }
 
 /** Tessera fedeltà (85,6 × 54 mm) da stampare su cartoncino o da mostrare sul telefono. */

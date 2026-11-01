@@ -55,7 +55,7 @@ const SECTIONS: Record<string, { label: string; links: [string, string, string?]
   },
   pos: {
     label: 'Cassa',
-    links: [['/cassa', 'Vendita al banco'], ['/pos/aperture', 'Chiusure di cassa'], ['/pos/casse', 'Casse e reparti'], ['/periferiche', 'Computer e periferiche', 'periferiche'], ['/etichette-modelli', 'Modelli di etichette', 'periferiche']],
+    links: [['/cassa', 'Vendita al banco'], ['/pos/aperture', 'Chiusure di cassa'], ['/pos/casse', 'Casse e reparti'], ['/pos/ricevute', 'Ricevute: logo e intestazione'], ['/periferiche', 'Computer e periferiche', 'periferiche'], ['/etichette-modelli', 'Modelli di etichette', 'periferiche']],
   },
   tentata_vendita: {
     label: 'Tentata vendita',
@@ -89,6 +89,7 @@ const KEYWORDS: Record<string, string> = {
   '/cassa': 'cassa scontrino registratore vendita al banco incasso copia cortesia',
   '/pos/aperture': 'chiusura cassa z fondo cassa quadratura',
   '/pos/casse': 'casse reparti tasti rapidi',
+  '/pos/ricevute': 'ricevuta non fiscale logo intestazione scontrino cortesia stampa saluti',
   '/periferiche': 'registratore telematico stampante termica agent periferiche',
   '/acquisti': 'acquisti ordini fornitore ddt fatture passive',
   '/impostazioni/azienda': 'dati azienda logo intestazione stampe',

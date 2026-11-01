@@ -242,7 +242,11 @@ export function NewAppointment({ day, staff, services, preset, partyId, onClose,
             )}
           </div>
         )}
-        <SegmentedControl value={channel} onChange={setChannel} data={[{ value: 'telefono', label: 'Telefono' }, { value: 'salone', label: 'In salone' }, { value: 'whatsapp', label: 'WhatsApp' }]} />
+        <div>
+          <Text size="sm" fw={500}>Come ha prenotato?</Text>
+          <Text size="xs" c="dimmed" mb={4}>Solo per sapere da dove arrivano le prenotazioni: la conferma WhatsApp parte comunque</Text>
+          <SegmentedControl fullWidth value={channel} onChange={setChannel} data={[{ value: 'telefono', label: 'Ha telefonato' }, { value: 'salone', label: 'Di persona in salone' }, { value: 'whatsapp', label: 'Su WhatsApp' }]} />
+        </div>
         <Textarea label="Note" value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={1} />
         <Group justify="space-between">
           <Text size="xs" c="dimmed">Con il cellulare del cliente parte la conferma su WhatsApp.</Text>

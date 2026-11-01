@@ -1,5 +1,5 @@
 // Incasso semplice e stampa della ricevuta non fiscale: pochi pulsanti grandi, le opzioni avanzate restano nascoste.
-import { Alert, Badge, Box, Button, Checkbox, Collapse, Group, Modal, NumberInput, Paper, Select, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core'
+import { Alert, Badge, Box, Button, Checkbox, Collapse, Group, Modal, NumberInput, Paper, SegmentedControl, Select, SimpleGrid, Stack, Text, TextInput, ThemeIcon } from '@mantine/core'
 import { IconCash, IconCheck, IconCreditCard, IconDeviceDesktop, IconGift, IconPrinter, IconReceipt, IconSettings } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 
@@ -8,6 +8,7 @@ import { notifyError, notifyOk } from '../../components'
 import type { Appointment } from '../agenda/lib'
 
 const BIG = { size: 'xl', radius: 'lg', h: 72, fz: 20 } as const
+export const NONFISCAL_REASONS = ['Buono regalo venduto', 'Pagamento di una fattura già emessa', 'Altro motivo']
 
 export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose: () => void; onDone: (a: Appointment) => void }) {
   const [client, setClient] = useState<any>(null)
@@ -20,6 +21,11 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
   const [invoice, setInvoice] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState<{ appt: Appointment; receipt: any } | null>(null)
+  const [nfAllowed, setNfAllowed] = useState(true)  // la cassa consente la ricevuta non fiscale al posto dello scontrino
+  const [docKind, setDocKind] = useState<'scontrino' | 'ricevuta'>('scontrino')
+  const [reason, setReason] = useState(NONFISCAL_REASONS[0])
+  const [other, setOther] = useState('')
+  const nonfiscal = docKind === 'ricevuta' && !invoice ? (reason === 'Altro motivo' ? other.trim() : reason) : null
 
   useEffect(() => {
     if (appt.party_id) appApi(`/api/agenda/clienti/${appt.party_id}`).then(setClient).catch(() => {})
@@ -27,6 +33,7 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
       const regs = await appApi('/api/pos/casse').catch(() => [])
       const id = s.register_id ?? regs.find((r: any) => r.active)?.id ?? null
       setRegId(id)
+      setNfAllowed(regs.find((r: any) => r.id === id)?.settings?.nonfiscal_allowed !== false)
       if (id) appApi(`/api/pos/casse/${id}/catalogo`).then((c) => setCatalog(c.items.filter((i: any) => i.price && i.active))).catch(() => {})
     }).catch(() => {})
   }, [appt.id])
@@ -40,8 +47,9 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
   const total = Math.max(0, services - Math.min(discount || 0, services) - rewardValue + prod)
 
   const pay = async (method: string) => {
+    if (docKind === 'ricevuta' && !invoice && !nonfiscal) { notifyError(new Error('Scrivi il motivo della ricevuta non fiscale')); return }
     setBusy(method)
-    const body = { register_id: regId, invoice, discount: discount || null, reward_id: reward, payments: [{ method, amount: total.toFixed(2) }],
+    const body = { register_id: regId, invoice, discount: discount || null, reward_id: reward, payments: [{ method, amount: total.toFixed(2) }], nonfiscal_reason: nonfiscal,
       products: products.map((p) => ({ item_id: p.item_id, quantity: '1', unit_price_gross: p.price.toFixed(2) })) }
     try {
       let r
@@ -65,7 +73,7 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
         <Stack align="center" ta="center" py="md">
           <ThemeIcon size={84} radius={84} color="green" variant="light"><IconCheck size={48} /></ThemeIcon>
           <Text fz={26} fw={800}>Fatto! {fmtEuro(done.receipt.total)}</Text>
-          <Text c="dimmed">{done.receipt.doc_type === 'FTI' ? `Fattura n. ${done.receipt.number} emessa` : rt ? 'Lo scontrino sta uscendo dal registratore' : 'Pagamento registrato (nessun registratore collegato)'}</Text>
+          <Text c="dimmed">{done.receipt.doc_type === 'FTI' ? `Fattura n. ${done.receipt.number} emessa` : done.receipt.fiscal?.nonfiscal ? `Ricevuta non fiscale n. ${done.receipt.number} registrata` : rt ? 'Lo scontrino sta uscendo dal registratore' : 'Pagamento registrato (nessun registratore collegato)'}</Text>
           {client?.loyalty && <Badge size="xl" variant="light" leftSection={<IconGift size={16} />}>Punti fedeltà aggiornati</Badge>}
           <ReceiptButtons apptId={done.appt.id} />
           <Button size="lg" variant="subtle" onClick={() => onDone(done.appt)}>Chiudi</Button>
@@ -92,6 +100,19 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
               </Group>
             ) : client.loyalty.next ? <Text size="sm">Ancora {client.loyalty.next.missing} punti per «{client.loyalty.next.name}»</Text> : null}
           </Alert>
+        )}
+        {nfAllowed && !invoice && (
+          <Paper withBorder radius="lg" p="sm">
+            <SegmentedControl fullWidth size="lg" radius="lg" value={docKind} onChange={(v) => setDocKind(v as any)} data-testid="tipo-documento"
+              data={[{ value: 'scontrino', label: 'Scontrino fiscale' }, { value: 'ricevuta', label: 'Ricevuta non fiscale' }]} />
+            {docKind === 'ricevuta' && (
+              <Stack gap={6} mt="sm">
+                <Select size="md" label="Motivo (stampato sulla ricevuta)" data={NONFISCAL_REASONS} value={reason} onChange={(v) => setReason(v || NONFISCAL_REASONS[0])} allowDeselect={false} />
+                {reason === 'Altro motivo' && <TextInput size="md" placeholder="Scrivi il motivo" maxLength={120} value={other} onChange={(e) => setOther(e.currentTarget.value)} />}
+                <Text size="xs" c="dimmed">Esce sul registratore come documento non fiscale. Usala solo quando lo scontrino non è dovuto.</Text>
+              </Stack>
+            )}
+          </Paper>
         )}
         <Text fw={600} ta="center">Come paga?</Text>
         <SimpleGrid cols={3}>

@@ -190,7 +190,8 @@ function DeviceEditor({ d, agents, drivers, onClose, onSaved }: { d: any; agents
                     <NumberInput key={rate} w={110} size="xs" label={`IVA ${rate}%`} min={1} max={99} value={v.options.vat_ids?.[rate] ?? ''}
                       onChange={(x) => opt('vat_ids', { ...(v.options.vat_ids ?? {}), [rate]: Number(x) || undefined })} />
                   ))}
-                  <NumberInput w={160} size="xs" label="Caratteri per riga (non fiscale)" min={20} max={48} value={v.options.width ?? 32}
+                  <Select w={210} size="xs" label="Carta del registratore" allowDeselect={false} value={String(v.options.width ?? 32)}
+                    data={[{ value: '32', label: '57 mm (32 caratteri)' }, { value: '42', label: '80 mm (42 caratteri)' }]}
                     onChange={(x) => opt('width', Number(x) || 32)} />
                 </Group>
               </div>

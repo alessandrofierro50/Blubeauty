@@ -121,6 +121,8 @@ function RegisterEditor({ reg, onClose, onSaved }: { reg: any; onClose: () => vo
         <Select label="Conto per carte e POS" description="Vuoto: la banca predefinita" data={accOpts(['banca', 'carta', 'altro'])} value={r.card_account_id} onChange={(v) => set('card_account_id', v)} clearable />
         <Stack gap={6} mt="lg">
           <Switch label="Stampa la ricevuta di cortesia a ogni vendita" checked={!!r.settings.auto_print} onChange={(e) => set('settings', { ...r.settings, auto_print: e.currentTarget.checked })} />
+          <Switch label="Consenti la ricevuta non fiscale al posto dello scontrino" checked={r.settings.nonfiscal_allowed !== false}
+            onChange={(e) => set('settings', { ...r.settings, nonfiscal_allowed: e.currentTarget.checked })} />
           <Switch label="Cassa attiva" checked={r.active} onChange={(e) => set('active', e.currentTarget.checked)} />
         </Stack>
       </SimpleGrid>

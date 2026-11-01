@@ -67,6 +67,16 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 - Cassa (`/cassa`): «Copia cortesia» (F1, nella barra in alto, dopo la vendita e in «Scontrini») = copia NON fiscale
   dell'ultimo scontrino sul registratore: `POST /api/pos/scontrini/{id}/stampa` con `where: registratore` → `rt.nonfiscal`
   da `periferiche.service.text_receipt` (intestazione `rt_skip`).
+- **Ricevuta non fiscale al posto dello scontrino** (2026-11-01): `nonfiscal_reason` in vendita (cassa: finestra d'incasso
+  «Scontrino fiscale / Ricevuta non fiscale» con motivo; incasso dall'appuntamento `Pay.tsx`): `Document.fiscal.nonfiscal`,
+  niente documento commerciale, `periferiche.print_nonfiscal` (registratore → `rt.nonfiscal`, altrimenti termica); anche il
+  reso di una ricevuta non fiscale è non fiscale; disattivabile per cassa (`settings.nonfiscal_allowed`).
+- **Ricevute** (`app/pos/receipts.py`, pagina `/pos/ricevute`): layout del documento commerciale (DESCRIZIONE/IVA/Prezzo,
+  TOTALE COMPLESSIVO, di cui IVA, pagamenti, resto, data e numero), logo (azienda / proprio / nessuno, raster ESC/POS
+  `type: image` stampato dall'agent con GS v 0) e righe d'intestazione e piede in AppSetting `ricevute`; sul registratore
+  l'intestazione la stampa lui (`header_on_rt` per stamparla comunque), carta 57 mm (32 car.) o 80 mm (42 car.).
+  Niente dicitura «non valido come documento commerciale» (titolare, 2026-11-01). Stampa dal computer: `/stampa/scontrino/:id`
+  con `ReceiptLines` (salone/Prints.tsx). Test: `tests/test_ricevute.py`.
 - Menu completo: tasto «Schermata principale» e casella «Cerca funzione» (`AppLayout.tsx`: voci dei moduli attivi +
   `KEYWORDS` per percorso, senza accenti; ordine nome > gruppo > parole chiave; Invio apre la prima, Esc svuota).
 - Barra in alto: `<HeaderAction>` (components.tsx) mette il pulsante principale di una pagina accanto al pacchetto

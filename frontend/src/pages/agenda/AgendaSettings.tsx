@@ -2,7 +2,7 @@ import { ActionIcon, Button, Checkbox, Grid, Group, NumberInput, Paper, Password
 import { IconCopy, IconPlus, IconTrash } from '@tabler/icons-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 
 import { appApi } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
@@ -46,6 +46,7 @@ export function HoursEditor({ value, onChange }: { value: Hours; onChange: (h: H
 export default function AgendaSettings() {
   const { status } = useOutletContext<AppCtx>()
   const has = (code: string) => status.menu.some((m: any) => m.code === code && m.enabled)
+  const nav = useNavigate()
   const [s, setS] = useState<any>(null)
   const [wa, setWa] = useState<any>(null)
   const [token, setToken] = useState('')
@@ -70,7 +71,8 @@ export default function AgendaSettings() {
   }
   return (
     <>
-      <PageTitle title="Impostazioni agenda" subtitle="Orari, prenotazione online da smartphone, cassa e WhatsApp" right={<Button onClick={save}>Salva</Button>} />
+      <PageTitle title="Impostazioni del salone" subtitle="Orari, prenotazione online da smartphone, cassa e WhatsApp"
+        right={<Group>{has('pos') && <Button variant="light" onClick={() => nav('/pos/ricevute')}>Ricevute: logo e intestazione</Button>}<Button onClick={save}>Salva</Button></Group>} />
       <Grid>
         <Grid.Col span={{ base: 12, md: 7 }}>
           <Stack>
