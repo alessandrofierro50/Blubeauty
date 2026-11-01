@@ -151,8 +151,12 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 - [ ] Collaudo con registratore telematico vero (Epson/Custom) e stampante termica in un salone pilota.
 - [ ] Casella `blubeauty@blucodeinformatica.it` da creare su Aruba; installazione sulla VPS (DNS, nginx, certbot).
 - [x] 2026-11-01 — buoni regalo (residuo, biglietto, WhatsApp, pagina pubblica) e pacchetti di sedute a scalare.
+- [x] 2026-11-01 — buoni MULTIUSO (ricevuta non fiscale alla vendita, scontrino all'utilizzo pagato «con buono», ricevuta del
+      saldo), buono intestato alla cliente, buoni e pacchetti nella cassa al banco, WhatsApp di buoni e pacchetti (migrazione 0028).
+- [ ] Confermare col commercialista il trattamento multiuso e il codice del pagamento «buono» sul registratore (Epson da verificare).
+- [ ] Manuale PDF e video: aggiornare la parte sui buoni (oggi descrive il monouso); voce dei video da scegliere.
 - [ ] Da valutare: abbonamenti ricorrenti, vendita online di buoni e pacchetti, firma su tablet dei consensi e delle condizioni,
-      agenda settimanale e trascinamento, «Paga con buono» anche nella cassa al banco.
+      agenda settimanale e trascinamento.
 
 ## Progetto BluCode — leggere prima di lavorare
 Questo repository è BluBeauty, una parte del progetto BluCode Informatica. La memoria condivisa del progetto è il repository **`alessandrofierro50/Progetto_blucode_informatica`** (parte: `blubeauty`).
