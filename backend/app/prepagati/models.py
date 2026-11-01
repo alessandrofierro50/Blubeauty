@@ -1,7 +1,9 @@
 """Buoni regalo e pacchetti di sedute (prepagati) di BluBeauty.
 
-Buono regalo «monouso»: lo scontrino si fa alla VENDITA (documento `sale_document_id`); all'utilizzo, anche in più volte,
-si scala il saldo (`gift_voucher_moves`) e la cliente paga con scontrino solo l'eventuale differenza.
+Buono regalo «multiuso» (predefinito, art. 6-quater DPR 633/72): alla VENDITA si registra l'incasso con una ricevuta non
+fiscale; lo scontrino si fa all'UTILIZZO per l'importo usato, pagato «con buono regalo» (il registratore non lo conta di nuovo
+come incasso). «Monouso» (art. 6-ter): scontrino alla vendita, all'utilizzo nessun nuovo scontrino. In entrambi i casi il
+saldo si scala a ogni uso (`gift_voucher_moves`) e il residuo resta sul buono.
 Pacchetto di sedute: listino (`service_packages`), venduto alla cliente (`client_packages`, scontrino alla vendita),
 ogni seduta usata all'incasso dell'appuntamento è una riga di `client_package_uses`.
 """
@@ -41,6 +43,10 @@ class GiftVoucher(Base):
     balance: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     purchaser_party_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id", ondelete="SET NULL"))
     beneficiary_name: Mapped[str | None] = mapped_column(String(120))
+    # cliente che lo riceve, se è già in anagrafica: il buono compare nella sua scheda e all'incasso
+    beneficiary_party_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id", ondelete="SET NULL"), index=True)
+    # multiuso: scontrino all'UTILIZZO (alla vendita solo ricevuta non fiscale); monouso: scontrino alla VENDITA
+    fiscal_mode: Mapped[str] = mapped_column(String(10), default="multiuso", server_default="multiuso")
     message: Mapped[str | None] = mapped_column(String(300))
     expires_on: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(12), default="attivo")  # attivo | esaurito | annullato (scaduto: calcolato)

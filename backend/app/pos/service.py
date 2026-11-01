@@ -28,6 +28,7 @@ from app.scadenzario.models import FinancialAccount
 
 CENT = Decimal("0.01")
 METHODS = {"contanti": "Contanti", "carta": "Carta di credito", "bancomat": "Bancomat", "buono": "Buono / gift card",
+           "buono_regalo": "Buono regalo multiuso",  # soldi già incassati alla vendita del buono: nessun conto
            "buono_pasto": "Buoni pasto", "satispay": "Satispay", "altro": "Altro"}
 CASH = "contanti"
 DEFAULT_SETTINGS = {
@@ -476,11 +477,13 @@ def create_sale(db: Session, reg: PosRegister, user_id, body: dict) -> tuple[Doc
     d.fiscal = {**d.fiscal, "change": str(change), "rt": None, "simulated": True}
     if body.get("prepaid"):  # buono regalo e pacchetti usati: riepilogo per le ricevute (residuo, sedute rimaste)
         d.fiscal["prepaid"] = body["prepaid"]
+    if body.get("fiscal_extra"):  # es. vendita di un buono multiuso (esclusa dalle statistiche dei ricavi)
+        d.fiscal.update(body["fiscal_extra"])
     if nonfiscal:  # ricevuta NON fiscale al posto dello scontrino: niente documento commerciale, resta tutto registrato
         d.fiscal["nonfiscal"] = {"reason": nonfiscal, "by": str(user_id) if user_id else None}
     for p in pays:
         db.add(PosPayment(tenant_id=reg.tenant_id, session_id=s.id, document_id=d.id, method=p["method"], amount=p["amount"],
-                          tendered=p.get("tendered"), account_id=None if party else _account(db, reg, p["method"])))
+                          tendered=p.get("tendered"), account_id=None if party or p["method"] == "buono_regalo" else _account(db, reg, p["method"])))
     db.flush()
     if not party:  # documento commerciale sul registratore telematico (o già stampato dalla cassa senza rete)
         from app.periferiche import service as per

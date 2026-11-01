@@ -48,6 +48,7 @@ class VoucherIn(BaseModel):
     amount: Decimal | None = Field(None, gt=0, le=5000)
     service_id: uuid.UUID | None = None
     purchaser_id: uuid.UUID | None = None
+    beneficiary_id: uuid.UUID | None = None  # chi lo riceve, se è già cliente: il buono va nella sua scheda
     beneficiary_name: str | None = Field(None, max_length=120)
     message: str | None = Field(None, max_length=300)
     months: int | None = Field(12, ge=1, le=60)  # vuoto = senza scadenza
@@ -74,8 +75,23 @@ def sell_voucher(body: VoucherIn, ctx: TenantContext = Depends(writer)):
     v, d, change = svc.sell_voucher(ctx.db, ctx.tenant_id, ctx.user.id, kind=body.kind, amount=body.amount, service_id=body.service_id,
                                     purchaser_id=body.purchaser_id, beneficiary_name=body.beneficiary_name, message=body.message,
                                     months=body.months, payments=_pays(body.payments), register_id=body.register_id,
-                                    client_uuid=body.client_uuid)
+                                    client_uuid=body.client_uuid, beneficiary_id=body.beneficiary_id)
     return {"voucher": svc.voucher_out(ctx.db, v), **_sale_out(ctx, d, change)}
+
+
+class SettingsIn(BaseModel):
+    voucher_mode: Literal["multiuso", "monouso"]
+
+
+@router.get("/impostazioni")
+def get_settings(ctx: TenantContext = Depends(operator)):
+    return svc.settings(ctx.db, ctx.tenant_id)
+
+
+@router.put("/impostazioni")
+def put_settings(body: SettingsIn, ctx: TenantContext = Depends(admin)):
+    """Buono multiuso (scontrino all'utilizzo) o monouso (scontrino alla vendita): vale per i buoni venduti da ora."""
+    return svc.save_settings(ctx.db, ctx.tenant_id, body.model_dump())
 
 
 @router.get("/buoni/codice/{code}")
@@ -206,4 +222,6 @@ def client_prepaid(party_id: uuid.UUID, ctx: TenantContext = Depends(operator)):
     cps = list(ctx.db.scalars(select(ClientPackage).where(ClientPackage.party_id == party_id).order_by(ClientPackage.created_at.desc())))
     used = svc.used_counts(ctx.db, [c.id for c in cps])
     vs = ctx.db.scalars(select(GiftVoucher).where(GiftVoucher.purchaser_party_id == party_id).order_by(GiftVoucher.created_at.desc()))
-    return {"packages": [svc.client_package_out(ctx.db, c, used) for c in cps], "vouchers": [svc.voucher_out(ctx.db, v) for v in vs]}
+    rec = ctx.db.scalars(select(GiftVoucher).where(GiftVoucher.beneficiary_party_id == party_id).order_by(GiftVoucher.created_at.desc()))
+    return {"packages": [svc.client_package_out(ctx.db, c, used) for c in cps], "vouchers": [svc.voucher_out(ctx.db, v) for v in vs],
+            "received": [svc.voucher_out(ctx.db, v) for v in rec]}

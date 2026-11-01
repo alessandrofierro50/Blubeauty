@@ -23,6 +23,30 @@ CENT = Decimal("0.01")
 ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # senza lettere e cifre che si confondono (0/O, 1/I/L)
 REASON_VOUCHER = "Utilizzo di un buono regalo già pagato"
 REASON_PACKAGE = "Seduta di un pacchetto già pagato"
+REASON_VOUCHER_SALE = "Vendita buono regalo multiuso (scontrino all'utilizzo)"
+VOUCHER_PAYMENT = "buono_regalo"  # pagamento dello scontrino all'utilizzo di un buono multiuso: non è un nuovo incasso
+SETTINGS_KEY = "prepagati"
+DEFAULTS = {"voucher_mode": "multiuso"}
+
+
+def settings(db: Session, tenant_id) -> dict:
+    from app.anagrafiche.models import AppSetting
+    st = db.get(AppSetting, (tenant_id, SETTINGS_KEY))
+    return {**DEFAULTS, **((st.value if st else None) or {})}
+
+
+def save_settings(db: Session, tenant_id, value: dict) -> dict:
+    from app.anagrafiche.models import AppSetting
+    mode = value.get("voucher_mode")
+    if mode not in ("multiuso", "monouso"):
+        raise fail("Tipo di buono non valido")
+    st = db.get(AppSetting, (tenant_id, SETTINGS_KEY))
+    if st is None:
+        st = AppSetting(tenant_id=tenant_id, key=SETTINGS_KEY, value={})
+        db.add(st)
+    st.value = {**DEFAULTS, **(st.value or {}), "voucher_mode": mode}
+    db.flush()
+    return {**DEFAULTS, **st.value}
 
 
 def fail(msg: str, code: int = status.HTTP_422_UNPROCESSABLE_ENTITY) -> HTTPException:
@@ -95,8 +119,8 @@ def _register(db: Session, tenant_id, register_id):
 
 
 def _sale(db: Session, tenant_id, user_id, register_id, client_uuid, description: str, amount: Decimal, payments: list[dict],
-          party: Party | None, vat_rate_id=None):
-    """Scontrino della vendita del buono o del pacchetto (documento commerciale sul registratore)."""
+          party: Party | None, vat_rate_id=None, nonfiscal_reason: str | None = None, fiscal_extra: dict | None = None):
+    """Vendita del buono o del pacchetto: scontrino (documento commerciale), oppure ricevuta non fiscale per il buono multiuso."""
     from app.agenda.service import settings as agenda_settings
     from app.pos import service as pos
     cfg = agenda_settings(db, tenant_id)
@@ -105,6 +129,7 @@ def _sale(db: Session, tenant_id, user_id, register_id, client_uuid, description
     if len(pays) == 1 and pays[0].get("method") != "contanti":
         pays[0]["amount"] = str(amount)  # carta/bancomat: l'importo esatto
     body = {"client_uuid": str(client_uuid or uuid.uuid4()), "payments": pays, "customer_id": str(party.id) if party else None, "no_promos": True,
+            "nonfiscal_reason": nonfiscal_reason, "fiscal_extra": fiscal_extra,
             "lines": [{"description": description[:120], "quantity": "1", "unit_price_gross": str(q(amount)),
                        "vat_rate_id": str(vat_rate_id) if vat_rate_id else None,
                        "department_id": str(cfg.department_id) if cfg.department_id else None, "price_source": "Prepagati"}]}
@@ -113,7 +138,9 @@ def _sale(db: Session, tenant_id, user_id, register_id, client_uuid, description
 
 def sell_voucher(db: Session, tenant_id, user_id, *, kind: str, amount=None, service_id=None, purchaser_id=None,
                  beneficiary_name: str | None = None, message: str | None = None, months: int | None = 12,
-                 payments: list[dict], register_id=None, client_uuid=None) -> tuple[GiftVoucher, object, Decimal]:
+                 payments: list[dict], register_id=None, client_uuid=None, beneficiary_id=None) -> tuple[GiftVoucher, object, Decimal]:
+    """Buono multiuso: incasso registrato con ricevuta non fiscale (codice a barre del buono), scontrino all'utilizzo.
+    Buono monouso: scontrino per l'intero valore alla vendita."""
     from app.agenda.models import AgendaService
     from app.documenti.models import Document
     svc = None
@@ -128,6 +155,8 @@ def sell_voucher(db: Session, tenant_id, user_id, *, kind: str, amount=None, ser
     if amount <= 0 or amount > 5000:
         raise fail("Importo del buono non valido")
     purchaser = db.get(Party, uuid.UUID(str(purchaser_id))) if purchaser_id else None
+    beneficiary = db.get(Party, uuid.UUID(str(beneficiary_id))) if beneficiary_id else None
+    mode = settings(db, tenant_id)["voucher_mode"]
     if client_uuid:  # doppio clic: stesso buono
         prev = db.scalar(select(Document).where(Document.client_uuid == uuid.UUID(str(client_uuid))))
         if prev is not None:
@@ -136,12 +165,16 @@ def sell_voucher(db: Session, tenant_id, user_id, *, kind: str, amount=None, ser
                 return v, prev, Decimal(str((prev.fiscal or {}).get("change") or 0))
     code = _new_code(db)
     label = f"Buono regalo {code}" + (f" · {svc.name}" if svc else "")
+    expires = (today() + timedelta(days=round(30.44 * months))) if months else None
+    who = beneficiary.name if beneficiary else (beneficiary_name or "").strip() or None
+    extra = {"voucher_sale": {"code": code, "amount": str(amount), "mode": mode, "beneficiary": who,
+                              "expires_on": expires.isoformat() if expires else None}}
     d, change, _ = _sale(db, tenant_id, user_id, register_id, client_uuid, label, amount, payments, purchaser,
-                         svc.vat_rate_id if svc else None)
+                         svc.vat_rate_id if svc else None, REASON_VOUCHER_SALE if mode == "multiuso" else None, extra)
     v = GiftVoucher(tenant_id=tenant_id, code=code, public_token=secrets.token_urlsafe(24), kind=kind, service_id=svc.id if svc else None,
                     initial_amount=amount, balance=amount, purchaser_party_id=purchaser.id if purchaser else None,
-                    beneficiary_name=(beneficiary_name or "").strip()[:120] or None, message=(message or "").strip()[:300] or None,
-                    expires_on=(today() + timedelta(days=round(30.44 * months))) if months else None,
+                    beneficiary_name=(who or "")[:120] or None, beneficiary_party_id=beneficiary.id if beneficiary else None,
+                    message=(message or "").strip()[:300] or None, expires_on=expires, fiscal_mode=mode,
                     sale_document_id=d.id, created_by=user_id)
     db.add(v)
     db.flush()
@@ -183,7 +216,8 @@ def voucher_out(db: Session, v: GiftVoucher, moves: bool = False) -> dict:
            "service": svc.name if svc else None, "initial_amount": str(v.initial_amount), "balance": str(v.balance),
            "status": voucher_state(v), "expires_on": v.expires_on.isoformat() if v.expires_on else None,
            "purchaser_id": str(purchaser.id) if purchaser else None, "purchaser": purchaser.name if purchaser else None,
-           "beneficiary_name": v.beneficiary_name, "message": v.message, "created_at": v.created_at.isoformat() if v.created_at else None,
+           "beneficiary_name": v.beneficiary_name, "beneficiary_id": str(v.beneficiary_party_id) if v.beneficiary_party_id else None,
+           "fiscal_mode": v.fiscal_mode, "message": v.message, "created_at": v.created_at.isoformat() if v.created_at else None,
            "sale_document_id": str(v.sale_document_id) if v.sale_document_id else None,
            "public_url": f"{public_link(db, v.tenant_id)}/buono/{v.public_token}"}
     if moves:
@@ -384,7 +418,7 @@ def plan_out(db: Session, plan: dict) -> dict:
     return {"packages": [{"item_id": str(it.id), "service": plan["services_names"][str(it.id)], "package": cp.name,
                           "client_package_id": str(cp.id), "session": n, "of": tot, "value": str(it.price)}
                          for it, cp, n, tot in plan["covered"]],
-            "voucher": {"code": v.code, "balance": str(v.balance), "use": str(plan["voucher_amount"]),
+            "voucher": {"code": v.code, "balance": str(v.balance), "use": str(plan["voucher_amount"]), "fiscal_mode": v.fiscal_mode,
                         "left": str(q(v.balance - plan["voucher_amount"])), "expires_on": v.expires_on.isoformat() if v.expires_on else None}
             if v else None,
             "to_pay": str(plan["to_pay"])}
@@ -397,7 +431,7 @@ def summary(plan: dict) -> dict:
                          "remaining": tot - n, "expires_on": cp.expires_on.isoformat() if cp.expires_on else None}
                         for it, cp, n, tot in plan["covered"]]}
     if v is not None and plan["voucher_amount"] > 0:
-        out["voucher"] = {"code": v.code, "used": str(plan["voucher_amount"]), "left": str(q(v.balance - plan["voucher_amount"])),
+        out["voucher"] = {"code": v.code, "used": str(plan["voucher_amount"]), "left": str(q(v.balance - plan["voucher_amount"])), "mode": v.fiscal_mode,
                           "expires_on": v.expires_on.isoformat() if v.expires_on else None}
     return out
 
@@ -416,6 +450,38 @@ def apply_plan(db: Session, plan: dict, appt, document_id, user_id) -> None:
     if plan["voucher"] is not None and plan["voucher_amount"] > 0:
         use_voucher(db, plan["voucher"], plan["voucher_amount"], appointment_id=appt.id, document_id=document_id, user_id=user_id)
     db.flush()
+
+
+def balance_print(db: Session, v: GiftVoucher, used: Decimal) -> dict:
+    """Ricevuta NON fiscale del saldo residuo del buono, dopo l'utilizzo (lo scontrino riporta solo il pagamento col buono)."""
+    from app.pos import receipts
+    cfg = receipts.settings(db, v.tenant_id)
+    L = receipts.header_lines(db, cfg)
+    L += [{"type": "feed"}, {"text": "SALDO BUONO REGALO", "align": "center", "bold": True}, {"type": "feed"},
+          {"text": f"Buono {v.code}"}]
+    if v.beneficiary_name:
+        L.append({"text": f"Intestato a {v.beneficiary_name}"})
+    L += [{"text": "Valore iniziale", "right": fmt_eur(v.initial_amount)},
+          {"text": "Usati oggi", "right": fmt_eur(used)},
+          {"type": "line"},
+          {"text": "CREDITO RESIDUO", "right": fmt_eur(v.balance), "bold": True}]
+    if v.expires_on:
+        L.append({"text": f"Valido fino al {v.expires_on:%d/%m/%Y}"})
+    L += [{"type": "feed"}, {"type": "barcode", "data": v.code.replace("-", ""), "label": v.code, "align": "center", "rt_skip": True},
+          {"text": f"{today():%d-%m-%Y}", "right": "Ricevuta non fiscale"}, {"type": "cut"}]
+    return {"lines": L}
+
+
+def print_balance(db: Session, reg, v: GiftVoucher, used: Decimal, user_id=None):
+    """Stampa il saldo residuo sul registratore (documento non fiscale) o, se non c'è, sulla termica."""
+    from app.periferiche import service as per
+    dev = per.register_device(db, reg, "rt")
+    kind = "rt.nonfiscal"
+    if dev is None:
+        dev, kind = per.register_device(db, reg, "printer"), "print.text"
+    if dev is None:
+        return None
+    return per.enqueue(db, dev, kind, balance_print(db, v, used), user_id=user_id)
 
 
 def receipt_lines(prepaid: dict | None) -> list[dict]:

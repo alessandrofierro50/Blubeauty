@@ -185,7 +185,7 @@ def department_for(line: dict, options: dict) -> int:
 class EpsonRT:
     """Epson FP-81 II RT / FP-90III: protocollo XML (ePOS-Print fiscale) via HTTP su /cgi-bin/fpmate.cgi."""
 
-    PAYMENTS = {"contanti": (0, 0), "carta": (2, 1), "bancomat": (2, 1), "satispay": (2, 1), "buono_pasto": (3, 1),
+    PAYMENTS = {"contanti": (0, 0), "carta": (2, 1), "bancomat": (2, 1), "satispay": (2, 1), "buono_pasto": (3, 1), "buono_regalo": (3, 2),
                 "buono": (6, 1), "altro": (2, 1)}
     DESC = 38
 
@@ -444,7 +444,9 @@ class CustomRT:
 
     PATH = "/xml/printer.htm"
     DESC, MSG = 22, 42
-    PAYMENTS = {"contanti": 1, "carta": 2, "bancomat": 2, "satispay": 2, "buono_pasto": 3, "buono": 2, "altro": 2}
+    # buono_regalo = buono multiuso già incassato alla vendita: tipo di pagamento «buono» del registratore, da far
+    # verificare al tecnico (opzione `payments` del dispositivo, es. {"buono_regalo": 3})
+    PAYMENTS = {"contanti": 1, "carta": 2, "bancomat": 2, "satispay": 2, "buono_pasto": 3, "buono": 2, "buono_regalo": 3, "altro": 2}
     TIMEOUT, REPORT_TIMEOUT = 120, 300       # risponde a stampa finita; la Z trasmette anche all'Agenzia delle Entrate
     CONNECT_TRIES, CONNECT_PAUSE = 3, 4
     VERIFY_WAITS = (2, 4, 8)

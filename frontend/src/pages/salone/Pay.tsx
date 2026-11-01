@@ -32,6 +32,10 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
   const [voucherInput, setVoucherInput] = useState('')
   const [askVoucher, setAskVoucher] = useState(false)
   const [preview, setPreview] = useState<any>(null)
+  const [myVouchers, setMyVouchers] = useState<any[]>([])  // buoni regalo ricevuti dalla cliente (nella sua scheda)
+  useEffect(() => {
+    if (appt.party_id) appApi(`/api/prepagati/clienti/${appt.party_id}`).then((r) => setMyVouchers((r.received ?? []).filter((v: any) => v.status === 'attivo'))).catch(() => {})
+  }, [appt.party_id])
 
   useEffect(() => {
     if (appt.party_id) appApi(`/api/agenda/clienti/${appt.party_id}`).then(setClient).catch(() => {})
@@ -89,6 +93,7 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
         <Stack align="center" ta="center" py="md">
           <ThemeIcon size={84} radius={84} color="green" variant="light"><IconCheck size={48} /></ThemeIcon>
           <Text fz={26} fw={800}>Fatto! {Number(done.receipt.total) === 0 && done.receipt.fiscal?.prepaid ? (done.receipt.fiscal.prepaid.voucher ? 'Pagato con il buono' : 'Seduta del pacchetto') : fmtEuro(done.receipt.total)}</Text>
+          {done.receipt.fiscal?.prepaid?.voucher?.mode === 'multiuso' && <Text>di cui {fmtEuro(done.receipt.fiscal.prepaid.voucher.used)} pagati con il buono regalo{Number(done.receipt.fiscal.prepaid.voucher.left) > 0 ? ' · esce la ricevuta del saldo' : ''}</Text>}
           <Text c="dimmed">{done.receipt.doc_type === 'FTI' ? `Fattura n. ${done.receipt.number} emessa` : done.receipt.fiscal?.nonfiscal ? `Ricevuta non fiscale n. ${done.receipt.number} registrata` : rt ? 'Lo scontrino sta uscendo dal registratore' : 'Pagamento registrato (nessun registratore collegato)'}</Text>
           {client?.loyalty && <Badge size="xl" variant="light" leftSection={<IconGift size={16} />}>Punti fedeltà aggiornati</Badge>}
           {done.receipt.fiscal?.prepaid?.voucher && <Text fz="lg">Sul buono {done.receipt.fiscal.prepaid.voucher.code} restano <b>{fmtEuro(done.receipt.fiscal.prepaid.voucher.left)}</b></Text>}
@@ -131,7 +136,8 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
         )}
         {preview?.voucher ? (
           <Alert color="grape" radius="lg" icon={<IconGift />} title={`Buono ${preview.voucher.code}: usati ${fmtEuro(preview.voucher.use)}`}>
-            <Group justify="space-between"><Text size="sm">Sul buono resteranno <b>{fmtEuro(preview.voucher.left)}</b>{preview.voucher.expires_on ? `, validi fino al ${new Date(preview.voucher.expires_on + 'T12:00').toLocaleDateString('it-IT')}` : ''}.</Text>
+            <Group justify="space-between"><Text size="sm">Sul buono resteranno <b>{fmtEuro(preview.voucher.left)}</b>{preview.voucher.expires_on ? `, validi fino al ${new Date(preview.voucher.expires_on + 'T12:00').toLocaleDateString('it-IT')}` : ''}.
+              {preview.voucher.fiscal_mode === 'multiuso' ? ' Scontrino per l\'intero importo, pagato «con buono regalo»' + (Number(preview.voucher.left) > 0 ? '; esce anche la ricevuta del saldo del buono.' : '.') : ''}</Text>
               <Button size="xs" variant="light" color="grape" onClick={() => setVoucherCode(null)}>Togli</Button></Group>
           </Alert>
         ) : askVoucher ? (
@@ -141,11 +147,15 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
             <Button size="md" color="grape" disabled={!voucherInput.trim()} onClick={() => setVoucherCode(voucherInput.trim())}>Usa il buono</Button>
           </Group>
         ) : (
-          <Button variant="light" color="grape" radius="xl" leftSection={<IconGift size={18} />} onClick={() => setAskVoucher(true)} data-testid="paga-con-buono">Paga con un buono regalo</Button>
+          <Group gap="xs">
+            {myVouchers.map((v) => <Button key={v.id} variant="filled" color="grape" radius="xl" leftSection={<IconGift size={18} />} onClick={() => setVoucherCode(v.code)}
+              data-testid="usa-buono-cliente">Usa il suo buono {v.code} · {fmtEuro(v.balance)}</Button>)}
+            <Button variant="light" color="grape" radius="xl" leftSection={<IconGift size={18} />} onClick={() => setAskVoucher(true)} data-testid="paga-con-buono">{myVouchers.length ? 'Altro buono' : 'Paga con un buono regalo'}</Button>
+          </Group>
         )}
         {allCovered ? (
           <Button {...BIG} color="green" leftSection={<IconCheck size={26} />} loading={!!busy} disabled={!!busy || !regId} onClick={() => pay('contanti')} data-testid="conferma-prepagato">
-            Conferma · già pagato {preview?.voucher && preview?.packages?.length ? 'con buono e pacchetto' : preview?.voucher ? 'con il buono' : 'con il pacchetto'}
+            Conferma · {preview?.voucher?.fiscal_mode === 'multiuso' ? 'paga con il buono' : `già pagato ${preview?.voucher && preview?.packages?.length ? 'con buono e pacchetto' : preview?.voucher ? 'con il buono' : 'con il pacchetto'}`}
           </Button>
         ) : <>
         {nfAllowed && !invoice && (

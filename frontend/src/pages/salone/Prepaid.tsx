@@ -1,4 +1,4 @@
-// Buoni regalo e pacchetti di sedute: vendita (con scontrino), elenchi con credito residuo e sedute rimaste, listino pacchetti.
+// Buoni regalo e pacchetti di sedute: vendita (buono multiuso: ricevuta non fiscale, scontrino all'utilizzo; pacchetti: scontrino), elenchi con credito residuo e sedute rimaste, listino pacchetti.
 import { ActionIcon, Alert, Badge, Button, Group, Modal, NumberInput, Paper, Progress, SegmentedControl, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput, Textarea, ThemeIcon } from '@mantine/core'
 import { IconBrandWhatsapp, IconCash, IconCheck, IconCreditCard, IconDeviceDesktop, IconEdit, IconGift, IconPackage, IconPlus, IconPrinter, IconSearch, IconTrash } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
@@ -45,7 +45,7 @@ export default function Prepaid() {
   const [stamp, setStamp] = useState(0)
   return (
     <>
-      <PageTitle title="Buoni regalo e pacchetti" subtitle="Lo scontrino si fa quando li vendi; quando la cliente li usa, il credito o le sedute si scalano da soli"
+      <PageTitle title="Buoni regalo e pacchetti" subtitle="Buono regalo: ricevuta non fiscale alla vendita, scontrino quando si usa. Pacchetti: scontrino alla vendita, sedute scalate a ogni incasso"
         right={<Group>
           <Button size="md" leftSection={<IconGift size={18} />} onClick={() => setSell('buono')} data-testid="nuovo-buono">Nuovo buono regalo</Button>
           <Button size="md" variant="light" leftSection={<IconPackage size={18} />} onClick={() => setSell('pacchetto')}>Vendi un pacchetto</Button>
@@ -76,6 +76,7 @@ function Vouchers({ admin }: { admin: boolean }) {
   if (!rows) return <Loading />
   return (
     <>
+      {admin && <VoucherMode />}
       <TextInput size="md" mb="sm" leftSection={<IconSearch size={18} />} placeholder="Cerca per codice, per chi è o chi l'ha comprato" value={q}
         onChange={(e) => setQ(e.currentTarget.value)} maw={520} />
       {rows.length === 0 ? <Paper withBorder p="xl" ta="center"><Text c="dimmed">Nessun buono regalo{q ? ' trovato' : ' venduto finora'}.</Text></Paper> : (
@@ -101,6 +102,25 @@ function Vouchers({ admin }: { admin: boolean }) {
       )}
       {open && <VoucherDetail v={open} admin={admin} onClose={() => setOpen(null)} onChanged={(v) => { setOpen(v); load() }} />}
     </>
+  )
+}
+
+/** Buono multiuso (predefinito) o monouso: vale per i buoni venduti da ora in poi. */
+function VoucherMode() {
+  const [mode, setMode] = useState<string | null>(null)
+  useEffect(() => { appApi(`${PP}/impostazioni`).then((s) => setMode(s.voucher_mode)).catch(() => {}) }, [])
+  if (!mode) return null
+  const save = (m: string) => appApi(`${PP}/impostazioni`, { method: 'PUT', body: { voucher_mode: m } }).then((s) => { setMode(s.voucher_mode); notifyOk('Impostazione salvata') }).catch(notifyError)
+  return (
+    <Paper withBorder p="sm" mb="md" radius="md">
+      <Group justify="space-between" wrap="wrap">
+        <div><Text fw={600}>Come si emettono i buoni regalo</Text>
+          <Text size="xs" c="dimmed" maw={560}>{mode === 'multiuso'
+            ? 'Multiuso: alla vendita ricevuta non fiscale con il codice; lo scontrino si emette quando il buono si usa, pagato «con buono regalo» (non è un nuovo incasso).'
+            : 'Monouso: scontrino alla vendita; quando il buono si usa, ricevuta non fiscale (o scontrino solo della differenza).'} Vale per i buoni venduti da ora: chiedi conferma al commercialista.</Text></div>
+        <SegmentedControl value={mode} onChange={save} data={[{ value: 'multiuso', label: 'Multiuso' }, { value: 'monouso', label: 'Monouso' }]} data-testid="modo-buoni" />
+      </Group>
+    </Paper>
   )
 }
 
@@ -202,7 +222,10 @@ export function SellVoucher({ onClose, onDone, purchaser }: { onClose: () => voi
   const [services, setServices] = useState<any[]>([])
   const [serviceId, setServiceId] = useState<string | null>(null)
   const [buyer, setBuyer] = useState<any>(purchaser ?? null)
+  const [forClient, setForClient] = useState<any>(null)  // chi lo riceve, se è già cliente: il buono va nella sua scheda
   const [forName, setForName] = useState('')
+  const [mode, setMode] = useState('multiuso')
+  useEffect(() => { appApi(`${PP}/impostazioni`).then((s) => setMode(s.voucher_mode)).catch(() => {}) }, [])
   const [message, setMessage] = useState('')
   const [months, setMonths] = useState('12')
   const [busy, setBusy] = useState<string | null>(null)
@@ -216,7 +239,7 @@ export function SellVoucher({ onClose, onDone, purchaser }: { onClose: () => voi
     try {
       const r = await sellWithRegister(`${PP}/buoni`, {
         client_uuid: cu, kind, amount: kind === 'importo' ? value.toFixed(2) : null, service_id: kind === 'servizio' ? serviceId : null,
-        purchaser_id: buyer?.id ?? null, beneficiary_name: forName || null, message: message || null, months: months === '0' ? null : Number(months),
+        purchaser_id: buyer?.id ?? null, beneficiary_id: forClient?.id ?? null, beneficiary_name: forClient ? null : forName || null, message: message || null, months: months === '0' ? null : Number(months),
         payments: [{ method, amount: value.toFixed(2) }],
       })
       setDone(r); onDone?.()
@@ -225,7 +248,7 @@ export function SellVoucher({ onClose, onDone, purchaser }: { onClose: () => voi
   return (
     <Modal opened onClose={onClose} title={<Text fw={700} fz="lg">Nuovo buono regalo</Text>} size="lg" radius="lg">
       {done ? (
-        <Done title={`Buono ${done.voucher.code}`} sub={`Valore ${fmtEuro(done.voucher.initial_amount)} · scontrino ${done.receipt.number}${Number(done.change) > 0 ? ` · resto ${fmtEuro(done.change)}` : ''}`} onClose={onClose}>
+        <Done title={`Buono ${done.voucher.code}`} sub={`Valore ${fmtEuro(done.voucher.initial_amount)} · ${done.receipt.fiscal?.nonfiscal ? 'ricevuta non fiscale' : 'scontrino'} ${done.receipt.number}${done.voucher.beneficiary_id ? ` · nella scheda di ${done.voucher.beneficiary_name}` : ''}${Number(done.change) > 0 ? ` · resto ${fmtEuro(done.change)}` : ''}`} onClose={onClose}>
           <VoucherActions v={done.voucher} />
         </Done>
       ) : (
@@ -240,14 +263,17 @@ export function SellVoucher({ onClose, onDone, purchaser }: { onClose: () => voi
             <Select size="md" label="Servizio regalato" searchable data={services.map((s) => ({ value: s.id, label: `${s.name} · ${fmtEuro(s.price)}` }))} value={serviceId} onChange={setServiceId} />
           )}
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
-            <TextInput size="md" label="Per chi è (facoltativo)" placeholder="es. Giulia" value={forName} onChange={(e) => setForName(e.currentTarget.value)} />
+            {forClient ? <ClientPicker label="Per chi è" value={forClient} onChange={setForClient} />
+              : <TextInput size="md" label="Per chi è (facoltativo)" placeholder="es. Giulia" value={forName} onChange={(e) => setForName(e.currentTarget.value)} />}
             <Select size="md" label="Valido per" value={months} onChange={(v) => setMonths(v ?? '12')} allowDeselect={false}
               data={[{ value: '6', label: '6 mesi' }, { value: '12', label: '12 mesi' }, { value: '24', label: '24 mesi' }, { value: '0', label: 'Senza scadenza' }]} />
           </SimpleGrid>
           <Textarea label="Dedica (facoltativa)" placeholder="es. Buon compleanno!" maxLength={300} autosize minRows={2} value={message} onChange={(e) => setMessage(e.currentTarget.value)} />
+          {!forClient && <ClientPicker label="È già cliente? Cercala: il buono va nella sua scheda" placeholder="Nome o telefono di chi lo riceve" value={null} onChange={(c) => { setForClient(c); if (c) setForName('') }} />}
           <ClientPicker label="Chi lo compra (facoltativo)" value={buyer} onChange={setBuyer} />
           <Paper withBorder p="sm" radius="md" bg="var(--mantine-color-blu-light)">
-            <Group justify="space-between"><Text fw={600}>Da pagare (con scontrino)</Text><Text fz={26} fw={800}>{fmtEuro(value)}</Text></Group>
+            <Group justify="space-between"><Text fw={600}>{mode === 'multiuso' ? 'Da pagare (ricevuta non fiscale con il codice)' : 'Da pagare (con scontrino)'}</Text><Text fz={26} fw={800}>{fmtEuro(value)}</Text></Group>
+            {mode === 'multiuso' && <Text size="xs" c="dimmed">Lo scontrino fiscale si emette quando il buono viene usato.</Text>}
           </Paper>
           <PayButtons busy={busy} onPay={pay} disabled={!(value > 0)} />
         </Stack>

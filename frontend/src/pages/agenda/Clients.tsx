@@ -261,7 +261,13 @@ function PrepaidBox({ client }: { client: any }) {
           <Button size="xs" variant="light" color="grape" leftSection={<IconGift size={14} />} onClick={() => setSell('buono')}>Buono regalo</Button>
         </Group>
       </Group>
-      {active.length === 0 && d.vouchers.length === 0 && <Text c="dimmed" size="sm">Nessun pacchetto in corso e nessun buono comprato.</Text>}
+      {active.length === 0 && d.vouchers.length === 0 && !(d.received ?? []).length && <Text c="dimmed" size="sm">Nessun pacchetto in corso e nessun buono.</Text>}
+      {(d.received ?? []).filter((v: any) => v.status === 'attivo').map((v: any) => (
+        <Paper key={v.id} withBorder p="sm" radius="md" mb="sm" bg="var(--mantine-color-grape-0)">
+          <Group justify="space-between"><Text fw={700}>🎁 Buono regalo {v.code}</Text><Text fw={800} fz="lg" c="grape">{fmtEuro(v.balance)}</Text></Group>
+          <Text size="xs" c="dimmed">Credito residuo di {fmtEuro(v.initial_amount)}{v.purchaser ? ` · regalato da ${v.purchaser}` : ''}{v.expires_on ? ` · valido fino al ${new Date(v.expires_on + 'T12:00').toLocaleDateString('it-IT')}` : ''}</Text>
+        </Paper>
+      ))}
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         {active.map((p: any) => (
           <Paper key={p.id} withBorder p="sm" radius="md">
@@ -271,7 +277,8 @@ function PrepaidBox({ client }: { client: any }) {
           </Paper>
         ))}
       </SimpleGrid>
-      {d.vouchers.length > 0 && <Table mt="sm"><Table.Tbody>
+      {d.vouchers.length > 0 && <Text size="sm" fw={600} mt="sm">Buoni comprati da lei</Text>}
+      {d.vouchers.length > 0 && <Table><Table.Tbody>
         {d.vouchers.map((v: any) => <Table.Tr key={v.id}><Table.Td ff="monospace">{v.code}</Table.Td><Table.Td>{v.beneficiary_name ? `per ${v.beneficiary_name}` : ''}</Table.Td>
           <Table.Td ta="right">{fmtEuro(v.balance)} di {fmtEuro(v.initial_amount)}</Table.Td><Table.Td><Badge size="sm" variant="light">{v.status}</Badge></Table.Td></Table.Tr>)}
       </Table.Tbody></Table>}

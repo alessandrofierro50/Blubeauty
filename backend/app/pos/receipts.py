@@ -35,7 +35,7 @@ TZ = ZoneInfo("Europe/Rome")
 SAMPLE = [("Piega", "22.00", "1"), ("Colore + piega", "65.00", "1"), ("Shampoo riparatore 250 ml", "12.50", "2")]
 ELECTRONIC = ("carta", "bancomat", "satispay")
 LABELS = {"contanti": "Pagamento contante", "carta": "Pagamento elettronico", "bancomat": "Pagamento elettronico",
-          "satispay": "Pagamento elettronico", "buono": "Buono", "buono_pasto": "Buono pasto", "altro": "Altro pagamento"}
+          "satispay": "Pagamento elettronico", "buono": "Buono", "buono_regalo": "Pagato con buono regalo", "buono_pasto": "Buono pasto", "altro": "Altro pagamento"}
 
 
 def settings(db: Session, tenant_id) -> dict:
@@ -150,7 +150,9 @@ def document_receipt(db: Session, d, pays: list, register_name: str = "") -> dic
     if d.doc_type == "SCO" and not nonfiscal and rt.get("status") == "emesso":
         L.append({"text": f"del documento commerciale {rt.get('z')}-{rt.get('number')}", "align": "center"})
     L.append({"type": "feed"})
-    vat = bool(cfg.get("show_vat"))
+    vs = (d.fiscal or {}).get("voucher_sale")
+    multiuso_sale = bool(vs and vs.get("mode") == "multiuso")  # IVA dovuta all'utilizzo del buono, non ora
+    vat = bool(cfg.get("show_vat")) and not multiuso_sale
     col = lambda rate, price: (f"{rate}%".rjust(4) + "  " if vat else "") + price.rjust(9)  # noqa: E731
     L.append({"text": "DESCRIZIONE", "right": (" IVA  " if vat else "") + "Prezzo(€)"})
     sign = -1 if d.doc_type == "RSO" else 1
@@ -165,7 +167,7 @@ def document_receipt(db: Session, d, pays: list, register_name: str = "") -> dic
             L.append({"text": f"  sconto {Decimal(str(ln.discount1)).normalize():f}%"})
     L += [{"type": "line"},
           {"text": "TOTALE COMPLESSIVO", "right": _eur(Decimal(str(d.total)) * sign), "bold": True},
-          {"text": "di cui IVA", "right": _eur(Decimal(str(d.vat_total or 0)) * sign)}]
+          *([] if multiuso_sale else [{"text": "di cui IVA", "right": _eur(Decimal(str(d.vat_total or 0)) * sign)}])]
     change = Decimal(str((d.fiscal or {}).get("change") or 0))
     for p in pays:
         got = p.tendered if p.tendered is not None else p.amount
@@ -175,6 +177,16 @@ def document_receipt(db: Session, d, pays: list, register_name: str = "") -> dic
     if change > 0:
         L.append({"text": "Resto", "right": _eur(change)})
     L.append({"text": "Importo pagato" if d.doc_type != "RSO" else "Importo rimborsato", "right": _eur(abs(Decimal(str(d.total))))})
+    if vs:  # vendita di un buono regalo: codice, intestatario, scadenza
+        from datetime import date as _date
+        L += [{"type": "line"}, {"text": f"Buono regalo {vs['code']}", "bold": True}]
+        if vs.get("beneficiary"):
+            L.append({"text": f"Intestato a {vs['beneficiary']}"})
+        if vs.get("expires_on"):
+            L.append({"text": f"Valido fino al {_date.fromisoformat(vs['expires_on']):%d/%m/%Y}"})
+        if multiuso_sale:
+            L.append({"text": "Lo scontrino fiscale si emette quando il buono viene utilizzato."})
+        L.append({"type": "barcode", "data": vs["code"].replace("-", ""), "label": vs["code"], "align": "center", "rt_skip": True})
     prepaid = (d.fiscal or {}).get("prepaid")
     if prepaid:  # buono regalo e pacchetti: credito residuo e sedute rimaste
         from app.prepagati.service import receipt_lines
