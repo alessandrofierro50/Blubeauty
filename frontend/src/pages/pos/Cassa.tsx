@@ -734,7 +734,7 @@ function PromptModal({ p, market, onClose }: { p: Prompt | null; market: boolean
   )
 }
 
-const NONFISCAL_REASONS = ['Buono regalo venduto', 'Pagamento di una fattura già emessa', 'Altro motivo']
+const NONFISCAL_REASONS = ['Utilizzo di un buono regalo già pagato', 'Seduta di un pacchetto già pagato', 'Pagamento di una fattura già emessa', 'Altro motivo']
 
 function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }: {
   total: number; invoice: any; lottery: boolean; nonfiscalAllowed: boolean; onClose: () => void

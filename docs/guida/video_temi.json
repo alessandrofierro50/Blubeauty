@@ -1,53 +1,329 @@
 [
- {"id": "1-benvenuta", "title": "Benvenuta in BluBeauty", "subtitle": "La giornata del salone a colpo d'occhio", "scenes": [
-  {"img": "01-accesso", "focus": [0.5, 0.5], "text": "Ciao, e benvenuta in BluBeauty, il gestionale pensato per parrucchieri, barber e centri estetici. Si usa dal computer del salone, dal tablet o dal telefono: basta aprire il browser ed entrare con la tua email e la password."},
-  {"img": "02-oggi", "focus": [0.42, 0.45], "text": "Appena entri trovi la schermata Oggi. In alto ci sono i pulsanti grandi per le cose di tutti i giorni: nuovo appuntamento, agenda, cerca cliente e quanto hai incassato oggi. Sotto, gli appuntamenti della giornata in ordine di orario, ognuno con il colore dell'operatrice."},
-  {"img": "02-oggi", "focus": [0.62, 0.42], "zoom": 1.25, "text": "Per ogni cliente bastano due tocchi: È arrivata, quando si siede in poltrona, e Incassa, quando ha finito. Il menu a sinistra è volutamente semplice, con poche voci grandi e chiare."},
-  {"img": "03-menu-completo", "focus": [0.12, 0.4], "text": "Se ti serve qualcosa in più, attiva Mostra tutte le funzioni: compare il menu completo, con magazzino, fatture, statistiche e impostazioni. In alto c'è sempre il pulsante Schermata principale, per tornare all'inizio con un tocco."},
-  {"img": "04-cerca-funzione", "focus": [0.12, 0.2], "zoom": 1.3, "text": "E se non ricordi dove si trova una funzione, scrivila nella casella Cerca funzione. Funziona anche con le parole di tutti i giorni: scrivi ferie e ti propone Turni e assenze. Premi Invio e ci sei."}
- ]},
- {"id": "2-appuntamenti", "title": "Prendere un appuntamento", "subtitle": "In quattro passi, anche al telefono", "scenes": [
-  {"img": "05-nuovo-per-chi", "focus": [0.5, 0.4], "text": "Vediamo come si prende un appuntamento. Tocca Nuovo appuntamento: il programma ti guida in quattro passi. Primo: per chi? Scrivi le prime lettere del nome o del telefono, e la cliente compare subito. Se è nuova, la crei al momento."},
-  {"img": "06-nuovo-cosa", "focus": [0.5, 0.45], "text": "Secondo passo: cosa fa? I servizi sono divisi per categoria, con durata e prezzo. Scegli, per esempio, colore e piega."},
-  {"img": "07-nuovo-con-chi", "focus": [0.45, 0.4], "text": "Terzo: con chi? Puoi scegliere un'operatrice precisa oppure La prima libera, e ci pensa il programma."},
-  {"img": "08-nuovo-quando", "focus": [0.55, 0.45], "text": "Quarto: quando? Scegli il giorno e tocca l'orario. Vedi solo gli orari davvero liberi: il programma tiene conto dei turni, delle assenze, delle cabine e anche del tempo di posa del colore, durante il quale l'operatrice può seguire un'altra cliente."},
-  {"img": "08-nuovo-quando", "focus": [0.42, 0.05], "zoom": 1.35, "text": "Il pulsante Conferma lo trovi anche in alto, accanto al nome del pacchetto, così non devi scorrere la pagina."},
-  {"img": "09-nuovo-fatto", "focus": [0.5, 0.4], "text": "Fatto! Se la cliente ha dato il cellulare, riceve subito la conferma su WhatsApp, con il link per vedere o disdire l'appuntamento. Il giorno prima le arriva anche il promemoria, in automatico."},
-  {"img": "10-agenda", "focus": [0.5, 0.45], "text": "L'agenda mostra la giornata con una colonna per ogni operatrice. Le parti a righe sono i tempi di posa, le ore in grigio quelle in cui un'operatrice non lavora. Tocca uno spazio vuoto per aggiungere un appuntamento proprio lì."},
-  {"img": "11-appuntamento", "focus": [0.78, 0.45], "text": "Toccando un appuntamento vedi tutto: servizi, prezzi, e i messaggi WhatsApp inviati alla cliente. Da qui puoi spostarlo, disdirlo, segnare che è arrivata oppure incassare."}
- ]},
- {"id": "3-prenotazione-online", "title": "Prenotazione online", "subtitle": "Le clienti prenotano da sole, dal telefono", "phone": true, "scenes": [
-  {"img": "31-prenota-servizi", "text": "Le tue clienti possono prenotare da sole, dal telefono, a qualsiasi ora. Basta condividere il link del salone, su Instagram, su Facebook, su Google o nel profilo WhatsApp. La pagina è semplice, come un'app: prima si sceglie il servizio."},
-  {"img": "32-prenota-operatore", "text": "Poi, se vuole, l'operatrice preferita."},
-  {"img": "33-prenota-orari", "text": "Quindi il giorno e l'orario, tra quelli davvero liberi in agenda."},
-  {"img": "34-prenota-dati", "text": "Infine nome, cognome e cellulare, con i consensi per la privacy e, se lo desidera, per ricevere offerte e novità."},
-  {"img": "35-prenota-confermata", "text": "La prenotazione è confermata, compare subito nella tua agenda, e la cliente riceve la conferma su WhatsApp."},
-  {"img": "36-prenota-gestisci", "text": "Con il suo link personale può rivedere l'appuntamento, o disdirlo fino a ventiquattro ore prima. Così l'orario torna libero per un'altra cliente, senza telefonate."}
- ]},
- {"id": "4-cassa", "title": "Incassare", "subtitle": "Scontrino, ricevuta non fiscale e fattura", "scenes": [
-  {"img": "12-incasso", "focus": [0.5, 0.5], "text": "Quando la cliente ha finito, tocca Incassa. Vedi i servizi e il totale. Se ha raccolto abbastanza punti, il premio è lì pronto: un tocco e lo sconto è applicato."},
-  {"img": "12-incasso", "focus": [0.5, 0.68], "zoom": 1.3, "text": "Poi scegli come paga: contanti, carta o bancomat. Lo scontrino esce dal registratore telematico collegato alla cassa."},
-  {"img": "13-incasso-ricevuta-non-fiscale", "focus": [0.5, 0.58], "zoom": 1.25, "text": "Quando lo scontrino non è dovuto, per esempio se vendi un buono regalo o la cliente paga una fattura già emessa, puoi scegliere Ricevuta non fiscale. Indichi il motivo, che viene stampato sulla ricevuta, e il registratore la stampa come documento non fiscale."},
-  {"img": "14-incasso-fatto", "focus": [0.5, 0.45], "text": "Fatto. I punti fedeltà si aggiornano da soli, e puoi stampare la ricevuta per la cliente sulla stampante da ottanta millimetri, sul registratore oppure dal computer. Se la cliente vuole la fattura, la trovi nelle altre opzioni."},
-  {"img": "23-cassa", "focus": [0.5, 0.45], "text": "Per vendere i prodotti c'è anche la cassa al banco, a tutto schermo: tasti rapidi per i prodotti più venduti, lettore di codici a barre, sconti e resi."},
-  {"img": "25-cassa-ricevuta-non-fiscale", "focus": [0.5, 0.45], "zoom": 1.25, "text": "Anche qui, nella finestra dell'incasso, scegli tra scontrino fiscale e ricevuta non fiscale, con il motivo."},
-  {"img": "26-cassa-dopo", "focus": [0.3, 0.2], "zoom": 1.3, "text": "Dopo la vendita, con il tasto Copia cortesia, o il tasto F1, stampi sul registratore una copia non fiscale dell'ultimo scontrino."},
-  {"img": "27-ricevute", "focus": [0.5, 0.45], "text": "In Ricevute, logo e intestazione, decidi come appaiono le tue ricevute: carichi il logo, che sulla stampante termica esce in bianco e nero, scrivi le righe d'intestazione e i saluti in fondo. A destra vedi l'anteprima, con lo stesso aspetto dello scontrino fiscale."},
-  {"img": "anteprima", "fit": true, "text": "Ecco come esce la ricevuta non fiscale: sulla stampante termica con il tuo logo, e sui registratori Custom, sia da ottanta che da cinquantasette millimetri, dove il logo e l'intestazione li stampa il registratore stesso."}
- ]},
- {"id": "5-turni", "title": "Turni e assenze", "subtitle": "Ferie, permessi e chiusure in un tocco", "scenes": [
-  {"img": "15-turni", "focus": [0.5, 0.4], "text": "In Turni e assenze vedi due settimane intere: per ogni operatrice e per ogni giorno, l'orario di lavoro. Le ferie, la malattia, i permessi e gli orari diversi si vedono a colpo d'occhio, ognuno con il suo colore."},
-  {"img": "16-turni-assenza", "focus": [0.5, 0.4], "zoom": 1.3, "text": "Tocca una casella e scegli: ferie, malattia, permesso per alcune ore oppure orario diverso, dal giorno al giorno. Con Chiudi il salone segni i festivi e le ferie estive per tutti."},
-  {"img": "18-turni-dopo", "focus": [0.5, 0.35], "text": "L'agenda e la prenotazione online ne tengono conto da sole. E se in quei giorni c'erano già appuntamenti, il programma te li elenca, con il pulsante per avvisare la cliente su WhatsApp. Anche le settimane alterne, come un sabato sì e uno no, si impostano una volta sola nella scheda dell'operatrice."}
- ]},
- {"id": "6-clienti-marketing", "title": "Clienti, punti e WhatsApp", "subtitle": "Fidelizzare senza fatica", "scenes": [
-  {"img": "19-clienti", "focus": [0.5, 0.4], "text": "In Clienti trovi tutte le tue clienti, con telefono, consensi e punti fedeltà."},
-  {"img": "20-scheda-cliente", "focus": [0.5, 0.4], "text": "Nella scheda di ogni cliente ci sono la raccolta punti, con la tessera e il codice a barre, lo storico delle visite, le schede tecniche con colori e formule, e la conversazione WhatsApp."},
-  {"img": "21-marketing", "focus": [0.4, 0.5], "text": "In Messaggi e punti imposti i messaggi automatici: conferma, promemoria, grazie con la richiesta di recensione, il richiamo per il colore dopo qualche settimana, gli auguri di compleanno e il messaggio per chi non torna da un po'. Con le campagne scrivi a gruppi di clienti, sempre e solo a chi ha dato il consenso."}
- ]},
- {"id": "7-impostazioni", "title": "Impostazioni", "subtitle": "Il salone come lo vuoi tu", "scenes": [
-  {"img": "28-impostazioni-salone", "focus": [0.5, 0.4], "text": "Nelle Impostazioni del salone scegli gli orari di apertura, le regole della prenotazione online, il link e il codice QR da condividere, e il collegamento con WhatsApp."},
-  {"img": "29-servizi", "focus": [0.5, 0.4], "text": "In Servizi, operatori e cabine inserisci il tuo listino, con durata, tempi di posa e prezzo, e per ogni operatrice i servizi che esegue e i suoi orari."},
-  {"img": "30-periferiche", "focus": [0.5, 0.3], "text": "Infine, in Computer e periferiche colleghi il registratore telematico e la stampante, tramite il piccolo programma BluBeauty Agent installato sul computer del salone. Ed ecco fatto: BluBeauty è pronto per la tua giornata. Grazie, e buon lavoro!"}
- ]}
+ {
+  "id": "1-benvenuta",
+  "title": "Benvenuta in BluBeauty",
+  "subtitle": "La giornata del salone a colpo d'occhio",
+  "scenes": [
+   {
+    "img": "01-accesso",
+    "focus": [
+     0.5,
+     0.5
+    ],
+    "text": "Ciao, e benvenuta in BluBeauty, il gestionale pensato per parrucchieri, barber e centri estetici. Si usa dal computer del salone, dal tablet o dal telefono: basta aprire il browser ed entrare con la tua email e la password."
+   },
+   {
+    "img": "02-oggi",
+    "focus": [
+     0.42,
+     0.45
+    ],
+    "text": "Appena entri trovi la schermata Oggi. In alto ci sono i pulsanti grandi per le cose di tutti i giorni: nuovo appuntamento, agenda, cerca cliente e quanto hai incassato oggi. Sotto, gli appuntamenti della giornata in ordine di orario, ognuno con il colore dell'operatrice."
+   },
+   {
+    "img": "02-oggi",
+    "focus": [
+     0.62,
+     0.42
+    ],
+    "zoom": 1.25,
+    "text": "Per ogni cliente bastano due tocchi: È arrivata, quando si siede in poltrona, e Incassa, quando ha finito. Il menu a sinistra è volutamente semplice, con poche voci grandi e chiare."
+   },
+   {
+    "img": "03-menu-completo",
+    "focus": [
+     0.12,
+     0.4
+    ],
+    "text": "Se ti serve qualcosa in più, attiva Mostra tutte le funzioni: compare il menu completo, con magazzino, fatture, statistiche e impostazioni. In alto c'è sempre il pulsante Schermata principale, per tornare all'inizio con un tocco."
+   },
+   {
+    "img": "04-cerca-funzione",
+    "focus": [
+     0.12,
+     0.2
+    ],
+    "zoom": 1.3,
+    "text": "E se non ricordi dove si trova una funzione, scrivila nella casella Cerca funzione. Funziona anche con le parole di tutti i giorni: scrivi ferie e ti propone Turni e assenze. Premi Invio e ci sei."
+   }
+  ]
+ },
+ {
+  "id": "2-appuntamenti",
+  "title": "Prendere un appuntamento",
+  "subtitle": "In quattro passi, anche al telefono",
+  "scenes": [
+   {
+    "img": "05-nuovo-per-chi",
+    "focus": [
+     0.5,
+     0.4
+    ],
+    "text": "Vediamo come si prende un appuntamento. Tocca Nuovo appuntamento: il programma ti guida in quattro passi. Primo: per chi? Scrivi le prime lettere del nome o del telefono, e la cliente compare subito. Se è nuova, la crei al momento."
+   },
+   {
+    "img": "06-nuovo-cosa",
+    "focus": [
+     0.5,
+     0.45
+    ],
+    "text": "Secondo passo: cosa fa? I servizi sono divisi per categoria, con durata e prezzo. Scegli, per esempio, colore e piega."
+   },
+   {
+    "img": "07-nuovo-con-chi",
+    "focus": [
+     0.45,
+     0.4
+    ],
+    "text": "Terzo: con chi? Puoi scegliere un'operatrice precisa oppure La prima libera, e ci pensa il programma."
+   },
+   {
+    "img": "08-nuovo-quando",
+    "focus": [
+     0.55,
+     0.45
+    ],
+    "text": "Quarto: quando? Scegli il giorno e tocca l'orario. Vedi solo gli orari davvero liberi: il programma tiene conto dei turni, delle assenze, delle cabine e anche del tempo di posa del colore, durante il quale l'operatrice può seguire un'altra cliente."
+   },
+   {
+    "img": "08-nuovo-quando",
+    "focus": [
+     0.42,
+     0.05
+    ],
+    "zoom": 1.35,
+    "text": "Il pulsante Conferma lo trovi anche in alto, accanto al nome del pacchetto, così non devi scorrere la pagina."
+   },
+   {
+    "img": "09-nuovo-fatto",
+    "focus": [
+     0.5,
+     0.4
+    ],
+    "text": "Fatto! Se la cliente ha dato il cellulare, riceve subito la conferma su WhatsApp, con il link per vedere o disdire l'appuntamento. Il giorno prima le arriva anche il promemoria, in automatico."
+   },
+   {
+    "img": "10-agenda",
+    "focus": [
+     0.5,
+     0.45
+    ],
+    "text": "L'agenda mostra la giornata con una colonna per ogni operatrice. Le parti a righe sono i tempi di posa, le ore in grigio quelle in cui un'operatrice non lavora. Tocca uno spazio vuoto per aggiungere un appuntamento proprio lì."
+   },
+   {
+    "img": "11-appuntamento",
+    "focus": [
+     0.78,
+     0.45
+    ],
+    "text": "Toccando un appuntamento vedi tutto: servizi, prezzi, e i messaggi WhatsApp inviati alla cliente. Da qui puoi spostarlo, disdirlo, segnare che è arrivata oppure incassare."
+   }
+  ]
+ },
+ {
+  "id": "3-prenotazione-online",
+  "title": "Prenotazione online",
+  "subtitle": "Le clienti prenotano da sole, dal telefono",
+  "phone": true,
+  "scenes": [
+   {
+    "img": "31-prenota-servizi",
+    "text": "Le tue clienti possono prenotare da sole, dal telefono, a qualsiasi ora. Basta condividere il link del salone, su Instagram, su Facebook, su Google o nel profilo WhatsApp. La pagina è semplice, come un'app: prima si sceglie il servizio."
+   },
+   {
+    "img": "32-prenota-operatore",
+    "text": "Poi, se vuole, l'operatrice preferita."
+   },
+   {
+    "img": "33-prenota-orari",
+    "text": "Quindi il giorno e l'orario, tra quelli davvero liberi in agenda."
+   },
+   {
+    "img": "34-prenota-dati",
+    "text": "Infine nome, cognome e cellulare, con i consensi per la privacy e, se lo desidera, per ricevere offerte e novità."
+   },
+   {
+    "img": "35-prenota-confermata",
+    "text": "La prenotazione è confermata, compare subito nella tua agenda, e la cliente riceve la conferma su WhatsApp."
+   },
+   {
+    "img": "36-prenota-gestisci",
+    "text": "Con il suo link personale può rivedere l'appuntamento, o disdirlo fino a ventiquattro ore prima. Così l'orario torna libero per un'altra cliente, senza telefonate."
+   }
+  ]
+ },
+ {
+  "id": "4-cassa",
+  "title": "Incassare",
+  "subtitle": "Scontrino, ricevuta non fiscale e fattura",
+  "scenes": [
+   {
+    "img": "12-incasso",
+    "focus": [
+     0.5,
+     0.5
+    ],
+    "text": "Quando la cliente ha finito, tocca Incassa. Vedi i servizi e il totale. Se ha raccolto abbastanza punti, il premio è lì pronto: un tocco e lo sconto è applicato."
+   },
+   {
+    "img": "12-incasso",
+    "focus": [
+     0.5,
+     0.68
+    ],
+    "zoom": 1.3,
+    "text": "Poi scegli come paga: contanti, carta o bancomat. Lo scontrino esce dal registratore telematico collegato alla cassa."
+   },
+   {
+    "img": "13-incasso-ricevuta-non-fiscale",
+    "focus": [
+     0.5,
+     0.58
+    ],
+    "zoom": 1.25,
+    "text": "Quando lo scontrino non è dovuto, perché l'incasso è già stato certificato, per esempio quando la cliente usa un buono regalo o una seduta di un pacchetto già pagati, puoi scegliere Ricevuta non fiscale. Indichi il motivo, che viene stampato sulla ricevuta, e il registratore la stampa come documento non fiscale."
+   },
+   {
+    "img": "14-incasso-fatto",
+    "focus": [
+     0.5,
+     0.45
+    ],
+    "text": "Fatto. I punti fedeltà si aggiornano da soli, e puoi stampare la ricevuta per la cliente sulla stampante da ottanta millimetri, sul registratore oppure dal computer. Se la cliente vuole la fattura, la trovi nelle altre opzioni."
+   },
+   {
+    "img": "23-cassa",
+    "focus": [
+     0.5,
+     0.45
+    ],
+    "text": "Per vendere i prodotti c'è anche la cassa al banco, a tutto schermo: tasti rapidi per i prodotti più venduti, lettore di codici a barre, sconti e resi."
+   },
+   {
+    "img": "25-cassa-ricevuta-non-fiscale",
+    "focus": [
+     0.5,
+     0.45
+    ],
+    "zoom": 1.25,
+    "text": "Anche qui, nella finestra dell'incasso, scegli tra scontrino fiscale e ricevuta non fiscale, con il motivo."
+   },
+   {
+    "img": "26-cassa-dopo",
+    "focus": [
+     0.3,
+     0.2
+    ],
+    "zoom": 1.3,
+    "text": "Dopo la vendita, con il tasto Copia cortesia, o il tasto F1, stampi sul registratore una copia non fiscale dell'ultimo scontrino."
+   },
+   {
+    "img": "27-ricevute",
+    "focus": [
+     0.5,
+     0.45
+    ],
+    "text": "In Ricevute, logo e intestazione, decidi come appaiono le tue ricevute: carichi il logo, che sulla stampante termica esce in bianco e nero, scrivi le righe d'intestazione e i saluti in fondo. A destra vedi l'anteprima, con lo stesso aspetto dello scontrino fiscale."
+   },
+   {
+    "img": "anteprima",
+    "fit": true,
+    "text": "Ecco come esce la ricevuta non fiscale: sulla stampante termica con il tuo logo, e sui registratori Custom, sia da ottanta che da cinquantasette millimetri, dove il logo e l'intestazione li stampa il registratore stesso."
+   }
+  ]
+ },
+ {
+  "id": "5-turni",
+  "title": "Turni e assenze",
+  "subtitle": "Ferie, permessi e chiusure in un tocco",
+  "scenes": [
+   {
+    "img": "15-turni",
+    "focus": [
+     0.5,
+     0.4
+    ],
+    "text": "In Turni e assenze vedi due settimane intere: per ogni operatrice e per ogni giorno, l'orario di lavoro. Le ferie, la malattia, i permessi e gli orari diversi si vedono a colpo d'occhio, ognuno con il suo colore."
+   },
+   {
+    "img": "16-turni-assenza",
+    "focus": [
+     0.5,
+     0.4
+    ],
+    "zoom": 1.3,
+    "text": "Tocca una casella e scegli: ferie, malattia, permesso per alcune ore oppure orario diverso, dal giorno al giorno. Con Chiudi il salone segni i festivi e le ferie estive per tutti."
+   },
+   {
+    "img": "18-turni-dopo",
+    "focus": [
+     0.5,
+     0.35
+    ],
+    "text": "L'agenda e la prenotazione online ne tengono conto da sole. E se in quei giorni c'erano già appuntamenti, il programma te li elenca, con il pulsante per avvisare la cliente su WhatsApp. Anche le settimane alterne, come un sabato sì e uno no, si impostano una volta sola nella scheda dell'operatrice."
+   }
+  ]
+ },
+ {
+  "id": "6-clienti-marketing",
+  "title": "Clienti, punti e WhatsApp",
+  "subtitle": "Fidelizzare senza fatica",
+  "scenes": [
+   {
+    "img": "19-clienti",
+    "focus": [
+     0.5,
+     0.4
+    ],
+    "text": "In Clienti trovi tutte le tue clienti, con telefono, consensi e punti fedeltà."
+   },
+   {
+    "img": "20-scheda-cliente",
+    "focus": [
+     0.5,
+     0.4
+    ],
+    "text": "Nella scheda di ogni cliente ci sono la raccolta punti, con la tessera e il codice a barre, lo storico delle visite, le schede tecniche con colori e formule, e la conversazione WhatsApp."
+   },
+   {
+    "img": "21-marketing",
+    "focus": [
+     0.4,
+     0.5
+    ],
+    "text": "In Messaggi e punti imposti i messaggi automatici: conferma, promemoria, grazie con la richiesta di recensione, il richiamo per il colore dopo qualche settimana, gli auguri di compleanno e il messaggio per chi non torna da un po'. Con le campagne scrivi a gruppi di clienti, sempre e solo a chi ha dato il consenso."
+   }
+  ]
+ },
+ {
+  "id": "7-impostazioni",
+  "title": "Impostazioni",
+  "subtitle": "Il salone come lo vuoi tu",
+  "scenes": [
+   {
+    "img": "28-impostazioni-salone",
+    "focus": [
+     0.5,
+     0.4
+    ],
+    "text": "Nelle Impostazioni del salone scegli gli orari di apertura, le regole della prenotazione online, il link e il codice QR da condividere, e il collegamento con WhatsApp."
+   },
+   {
+    "img": "29-servizi",
+    "focus": [
+     0.5,
+     0.4
+    ],
+    "text": "In Servizi, operatori e cabine inserisci il tuo listino, con durata, tempi di posa e prezzo, e per ogni operatrice i servizi che esegue e i suoi orari."
+   },
+   {
+    "img": "30-periferiche",
+    "focus": [
+     0.5,
+     0.3
+    ],
+    "text": "Infine, in Computer e periferiche colleghi il registratore telematico e la stampante, tramite il piccolo programma BluBeauty Agent installato sul computer del salone. Ed ecco fatto: BluBeauty è pronto per la tua giornata. Grazie, e buon lavoro!"
+   }
+  ]
+ }
 ]

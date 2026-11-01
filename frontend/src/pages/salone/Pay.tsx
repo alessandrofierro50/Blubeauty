@@ -8,7 +8,7 @@ import { notifyError, notifyOk } from '../../components'
 import type { Appointment } from '../agenda/lib'
 
 const BIG = { size: 'xl', radius: 'lg', h: 72, fz: 20 } as const
-export const NONFISCAL_REASONS = ['Buono regalo venduto', 'Pagamento di una fattura già emessa', 'Altro motivo']
+export const NONFISCAL_REASONS = ['Utilizzo di un buono regalo già pagato', 'Seduta di un pacchetto già pagato', 'Pagamento di una fattura già emessa', 'Altro motivo']
 
 export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose: () => void; onDone: (a: Appointment) => void }) {
   const [client, setClient] = useState<any>(null)

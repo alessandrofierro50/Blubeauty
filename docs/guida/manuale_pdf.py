@@ -252,12 +252,12 @@ story += [P("Tocca <b>Incassa</b> sull'appuntamento. Vedi servizi e totale; se l
           shot("12-incasso", "La finestra d'incasso con il premio fedeltà.", width=125 * mm),
           P("In <b>Altre opzioni</b> puoi aggiungere i prodotti venduti, uno sconto oppure scegliere <b>Vuole la fattura</b>.")]
 story += h2("Ricevuta non fiscale al posto dello scontrino")
-story += [P("Quando lo scontrino non è dovuto (per esempio se vendi un <b>buono regalo</b>, o la cliente paga una <b>fattura già emessa</b>), "
+story += [P("Quando lo scontrino non è dovuto perché l'incasso è già stato certificato (per esempio la cliente usa un <b>buono regalo</b> o una seduta di un <b>pacchetto</b> già pagati con scontrino, oppure paga una <b>fattura già emessa</b>), "
             "scegli <b>Ricevuta non fiscale</b> invece di <i>Scontrino fiscale</i> e indica il motivo. La ricevuta esce sul registratore come "
             "documento non fiscale (o sulla stampante termica) e il motivo è stampato sulla ricevuta. L'incasso resta registrato nel gestionale."),
           shot("13-incasso-ricevuta-non-fiscale", "La scelta «Ricevuta non fiscale» con il motivo.", width=125 * mm),
           warn("Per legge ogni incasso va certificato con lo scontrino (documento commerciale) o con la fattura. Usa la ricevuta non fiscale "
-               "solo quando lo scontrino non è dovuto. Se non vuoi che i collaboratori la usino, disattivala nella cassa "
+               "solo quando lo scontrino non è dovuto. La <b>vendita</b> di un buono regalo per i servizi del salone di norma va con lo scontrino (buono «monouso»): la ricevuta non fiscale si usa quando il buono viene <b>utilizzato</b>. Nel dubbio chiedi al commercialista. Se non vuoi che i collaboratori la usino, disattivala nella cassa "
                "(<i>Casse e reparti › Consenti la ricevuta non fiscale al posto dello scontrino</i>)."),
           shot("14-incasso-fatto", "Dopo l'incasso: punti aggiornati e stampa della ricevuta per la cliente.", width=110 * mm)]
 story += h2("La cassa al banco")
