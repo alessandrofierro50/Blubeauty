@@ -11,7 +11,7 @@ import { brand } from '../../brand'
 import { Logo, notifyError, notifyOk } from '../../components'
 
 type Scope = 'user' | 'admin'
-const call = (scope: Scope, path: string, body: unknown) => (scope === 'admin' ? adminApi(path, { body }) : appApi('/api/auth' + path, { body }))
+const call = (scope: Scope, path: string, body: unknown) => (scope === 'admin' ? adminApi('/auth' + path, { body }) : appApi('/api/auth' + path, { body }))
 const minLen = (scope: Scope) => (scope === 'admin' ? 12 : 8)
 
 export function strength(p: string) {
