@@ -88,7 +88,7 @@ def contract_pdf(*, product: str, plan_name: str, amount, stamp, total, billing:
     story += [Spacer(1, 6 * mm), Paragraph(
         f"Il Cliente ha accettato il contratto e i termini di utilizzo con il modulo di acquisto del sito (accettazione registrata con data, ora e indirizzo IP). "
         f"Metodo di pagamento scelto: {'carta' if method == 'carta' else 'bonifico'}. "
-        "Ai sensi degli artt. 1341 e 1342 c.c. il Cliente professionista approva specificamente le clausole 6 (Responsabilità) e 9 (Legge e foro).", small)]
+        "Ai sensi degli artt. 1341 e 1342 c.c. il Cliente professionista approva specificamente le clausole 7 (Responsabilità) e 9 (Legge e foro).", small)]
     if consumer:
         story += [PageBreak(), Paragraph("Modulo tipo di recesso", h1),
                   Paragraph("(da compilare e restituire solo se si desidera recedere dal contratto)", small), Spacer(1, 6 * mm),
