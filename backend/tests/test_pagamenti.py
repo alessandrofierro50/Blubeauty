@@ -749,3 +749,85 @@ def test_impostazioni_pannello(client, gw, admin_headers, customer):
     assert r["iban"] == "IT60X0542811101000000123456" and not r["methods"]["carta"]["active"]
     assert [m["code"] for m in client.get(f"{P}/opzioni", headers=h).json()["metodi"]] == ["bonifico"]
     assert client.get(f"{A}/impostazioni").status_code == 401
+
+
+    assert r["iban"] == "IT60X0542811101000000123456" and not r["methods"]["carta"]["active"]
+    assert [m["code"] for m in client.get(f"{P}/opzioni", headers=h).json()["metodi"]] == ["bonifico"]
+    assert client.get(f"{A}/impostazioni").status_code == 401
+
+
+# ====================================================================== acquisto dal sito
+
+
+def _buy(extra=None, **over):
+    body = {"plan_code": "BASE", "method": "carta", "name": "Mario Rossi", "email": "mario@rossi.it", "phone": "333 1",
+            "billing": AZIENDA, "privacy": True, "terms": True, "terms_version": "1.0", "elapsed_ms": 20000,
+            "return_url": "https://blucodeinformatica.it/acquisto/esito/"}
+    body.update(over)
+    return body
+
+
+@pytest.fixture
+def pdfs(monkeypatch):
+    from app.auth import accounts
+    monkeypatch.setattr(accounts, "fetch_pdf", lambda url: b"%PDF-1.4 finto")
+
+
+def test_acquisto_info_solo_annuale(client, gw):
+    r = client.get("/api/public/acquisto").json()
+    assert r["enabled"] and r["periodicita"] == "annuale" and set(r["metodi"]) == {"carta", "bonifico"}
+    assert all(set(p["prezzi"]) == {"annuale"} for p in r["piani"])
+
+
+def test_acquisto_carta_fattura_subito_con_documenti(client, gw, pdfs, owner_db):
+    OUTBOX.clear()
+    r = client.post("/api/public/acquisto", json=_buy())
+    assert r.status_code == 201, r.text
+    j = r.json()
+    assert j["redirect_url"].startswith("https://checkout.stripe.com/")
+    form = gw.stripe_sessions[0]["form"]
+    assert form["success_url"] == "https://blucodeinformatica.it/acquisto/esito/?stato=ok"
+    assert form["line_items[0][price_data][unit_amount]"] == "29200"
+    order = next(m for m in OUTBOX if m["subject"].startswith("Conferma d'ordine"))
+    names = [a[0] for a in order["attachments"]]
+    assert any(n.startswith("Contratto_") for n in names) and "informativa-privacy.pdf" in names
+    assert any(n.startswith("termini-di-utilizzo") for n in names)
+    assert "Manuale" in order["html"] and "Video tutorial" in order["html"]
+    assert any(m["to"] == ["mario@rossi.it"] and "credenziali" in m["subject"].lower() or "accesso" in m["subject"].lower() for m in OUTBOX)
+    p = _payment(owner_db, j["pagamento"])
+    assert p.status == "in_attesa" and p.method == "carta" and p.period == "annuale" and p.invoice_number is None
+    # il pagamento arriva dal gestore: fattura elettronica subito
+    ev = _stripe_event(p.provider_ref, j["pagamento"], 29200)
+    assert _post_stripe(client, ev).status_code == 200
+    p = _payment(owner_db, j["pagamento"])
+    assert p.status == "pagato" and p.invoice_number == 1 and p.invoice_xml
+    # stessa email o stessa partita IVA: niente doppioni
+    assert client.post("/api/public/acquisto", json=_buy()).json()["detail"]["code"] == "email_registrata"
+    assert client.post("/api/public/acquisto", json=_buy(email="altro@rossi.it")).json()["detail"]["code"] == "azienda_registrata"
+
+
+def test_acquisto_bonifico_nessuna_fattura_prima_della_conferma(client, gw, pdfs, owner_db, admin_headers):
+    OUTBOX.clear()
+    r = client.post("/api/public/acquisto", json=_buy(method="bonifico", email="lucia@verdi.it",
+                                                      billing={**PRIVATO, "email": "lucia@verdi.it"}))
+    assert r.status_code == 201, r.text
+    j = r.json()
+    assert j["bonifico"]["iban"] == "IT60X0542811101000000123456" and j["bonifico"]["importo"] == "292.00"
+    order = next(m for m in OUTBOX if m["subject"].startswith("Conferma d'ordine"))
+    assert "IT60X0542811101000000123456" in order["html"] and j["bonifico"]["causale"] in order["html"]
+    p = _payment(owner_db, j["pagamento"])
+    assert p.status == "in_attesa" and p.invoice_number is None and p.invoice_xml is None
+    r = client.post(f"{A}/{j["pagamento"]}/conferma-bonifico", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    p = _payment(owner_db, j["pagamento"])
+    assert p.status == "pagato" and p.invoice_number == 1
+
+
+def test_acquisto_dati_e_consensi_controllati(client, gw, pdfs):
+    assert client.post("/api/public/acquisto", json=_buy(privacy=False)).status_code == 422
+    assert client.post("/api/public/acquisto", json=_buy(terms_version="0.1")).status_code == 422
+    bad = {**AZIENDA, "partita_iva": "12345678901"}
+    assert client.post("/api/public/acquisto", json=_buy(billing=bad)).json()["detail"]["code"] == "dati_fatturazione"
+    assert client.post("/api/public/acquisto", json=_buy(plan_code="NONESISTE")).status_code == 404
+    assert client.post("/api/public/acquisto", json=_buy(method="paypal")).status_code == 422
+    assert client.post("/api/public/acquisto", json=_buy(website="x")).json() == {"ok": True, "robot": True}

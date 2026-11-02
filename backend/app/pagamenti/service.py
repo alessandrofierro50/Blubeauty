@@ -237,7 +237,8 @@ def _new_causale() -> tuple[uuid.UUID, str]:
     return pid, f"BLUCODE {get_settings().fatture_sezionale} {pid.hex[:8].upper()}"
 
 
-def checkout(db: Session, tenant: Tenant, *, plan_code: str, period: str, method: str, user_id=None) -> dict:
+def checkout(db: Session, tenant: Tenant, *, plan_code: str, period: str, method: str, user_id=None,
+             return_urls: tuple[str, str] | None = None) -> dict:
     """POST /api/app/pagamenti/checkout. Crea il pagamento «in_attesa» con l'importo del listino e:
     carta → sessione Stripe Checkout; paypal → ordine PayPal; bonifico → istruzioni (nessun documento)."""
     s = get_settings()
@@ -280,8 +281,8 @@ def checkout(db: Session, tenant: Tenant, *, plan_code: str, period: str, method
         if method == "carta":
             r = pv.stripe_checkout(payment_id=str(p.id), tenant_id=str(tenant.id), description=desc, total=a.total,
                                    email=(tenant.billing_data or {}).get("email") or tenant.contact_email,
-                                   success_url=f"{url}/pagamento/esito?stato=ok&id={p.id}",
-                                   cancel_url=f"{url}/pagamento/esito?stato=annullato&id={p.id}")
+                                   success_url=return_urls[0] if return_urls else f"{url}/pagamento/esito?stato=ok&id={p.id}",
+                                   cancel_url=return_urls[1] if return_urls else f"{url}/pagamento/esito?stato=annullato&id={p.id}")
         else:
             r = pv.paypal_create_order(payment_id=str(p.id), causale=causale, description=desc, total=a.total,
                                        return_url=f"{url}/api/pagamenti/paypal/ritorno?id={p.id}",

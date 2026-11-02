@@ -87,7 +87,12 @@ def terms_link(version: str) -> str:
 
 def terms_pdf() -> bytes | None:
     """PDF dei termini scaricato al momento dell'invio (timeout breve). None se non configurato o non raggiungibile."""
-    url = get_settings().terms_pdf_url.strip()
+    return fetch_pdf(get_settings().terms_pdf_url)
+
+
+def fetch_pdf(url: str) -> bytes | None:
+    """Scarica un PDF (timeout 10 s). None se l'indirizzo è vuoto o il file non arriva."""
+    url = (url or "").strip()
     if not url:
         return None
     try:
@@ -97,7 +102,7 @@ def terms_pdf() -> bytes | None:
             raise ValueError("il file scaricato non è un PDF")
         return r.content
     except Exception as e:  # noqa: BLE001
-        log.warning("PDF dei termini non scaricato da %s (%s): email senza allegato", url, e)
+        log.warning("PDF non scaricato da %s (%s): email senza allegato", url, e)
         return None
 
 

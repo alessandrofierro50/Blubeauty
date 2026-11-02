@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Termini di utilizzo accettati nell'iscrizione (contratto comune: progetto_blucode_informatica/comune/prova-gratuita.md)
     terms_version: str = "1.0"  # deve coincidere con quella mostrata dal modulo del sito
     terms_url: str = "https://blucodeinformatica.it/termini/"
+    privacy_pdf_url: str = "https://blucodeinformatica.it/privacy/informativa-privacy-v1.0.pdf"  # allegato all'email d'ordine
+    manual_url: str = "https://blucodeinformatica.it/blubeauty/manuale/"  # manuale e video nell'email d'ordine
+    videos_url: str = "https://blucodeinformatica.it/blubeauty/video/"
     terms_pdf_url: str = "https://blucodeinformatica.it/termini/termini-di-utilizzo-v1.0.pdf"  # allegato all'email
 
     # Email
