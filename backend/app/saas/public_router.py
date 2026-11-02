@@ -118,7 +118,8 @@ def _e(v) -> str:
 # ====================================================================== acquisto dal sito (solo annuale)
 # Contratto comune: comune/acquisto-dal-sito.md. Crea l'azienda (come la prova, con le credenziali per email), salva i dati di
 # fatturazione, apre il pagamento annuale e manda subito l'email con contratto, termini, privacy e link a manuale e video.
-# Carta: Stripe Checkout, poi fattura subito (webhook). Bonifico: istruzioni; la fattura parte alla conferma del super admin.
+# Carta (Stripe Checkout) e PayPal (ordine e cattura lato server): fattura subito alla conferma del webhook.
+# Bonifico: istruzioni; la fattura parte alla conferma del super admin.
 
 
 @router.get("/acquisto")
@@ -127,14 +128,14 @@ def purchase_info(db: Session = Depends(get_db)):
     s = get_settings()
     offers = [{"code": p["code"], "name": p["name"], "prezzi": {"annuale": p["prezzi"]["annuale"]}}
               for p in pay.plans_offer(db) if "annuale" in p["prezzi"]]
-    methods = [m for m in pay.active_methods(db) if m in ("carta", "bonifico")]
+    methods = [m for m in ("carta", "paypal", "bonifico") if m in pay.active_methods(db)]
     return {"enabled": bool(offers and methods), "product": s.brand_name, "piani": offers, "metodi": methods, "periodicita": "annuale",
             "terms_version": s.terms_version, "terms_url": s.terms_url, "privacy_url": f"{s.website_url.rstrip('/')}/privacy"}
 
 
 class PurchaseIn(BaseModel):
     plan_code: str = Field(max_length=40)
-    method: str = Field(pattern="^(carta|bonifico)$")
+    method: str = Field(pattern="^(carta|paypal|bonifico)$")
     name: str = Field(min_length=2, max_length=120)  # referente, diventa l'amministratore
     email: EmailStr
     phone: str | None = Field(None, max_length=40)
@@ -142,7 +143,7 @@ class PurchaseIn(BaseModel):
     privacy: bool
     terms: bool
     terms_version: str = Field(max_length=20)
-    return_url: str | None = Field(None, max_length=300)  # pagina del sito a cui tornare dopo la carta
+    return_url: str | None = Field(None, max_length=300)  # pagina del sito a cui tornare dopo carta o PayPal
     website: str | None = None
     elapsed_ms: int | None = None
 
@@ -192,7 +193,7 @@ def purchase(body: PurchaseIn, request: Request, db: Session = Depends(get_db)):
     pay.save_billing(db, tenant, data)
     set_tenant(db, tenant.id)
     return_urls = None
-    if body.return_url and body.return_url.startswith(s.website_url.rstrip("/")):
+    if pay.is_site_url(body.return_url):
         sep = "&" if "?" in body.return_url else "?"
         return_urls = (f"{body.return_url}{sep}stato=ok", f"{body.return_url}{sep}stato=annullato")
     try:
@@ -207,7 +208,7 @@ def purchase(body: PurchaseIn, request: Request, db: Session = Depends(get_db)):
         try:
             send_email([s.admin_notify_email], f"Nuovo ordine dal sito: {tenant.name}",
                        f"<p>Ordine {_e(s.brand_name)} dal sito.</p><p><b>{_e(tenant.name)}</b> · {_e(body.name)} · {_e(body.email)}<br>"
-                       f"{_e(plan.name)} annuale, {_e('carta' if body.method == 'carta' else 'bonifico')}, totale {_e(p.total)} €<br>"
+                       f"{_e(plan.name)} annuale, {_e(contratto.METHOD_NAMES[body.method])}, totale {_e(p.total)} €<br>"
                        f"Causale {_e(p.causale)}"
                        + ("<br><b>Bonifico: conferma il pagamento dal pannello quando arriva l'accredito: la fattura parte solo allora.</b>" if body.method == "bonifico" else "") + "</p>")
         except Exception:  # noqa: BLE001
@@ -241,7 +242,7 @@ def _send_order_email(db, tenant, p, billing: dict, method: str) -> None:
                     "<p>Quando il bonifico risulta accreditato confermiamo il pagamento e ti mandiamo la fattura elettronica e la ricevuta. "
                     "Nel frattempo puoi già usare il programma con il periodo di prova.</p>")
         else:
-            bank = ("<p>Appena il pagamento con carta è confermato ricevi la ricevuta con la proforma della fattura elettronica, "
+            bank = (f"<p>Appena il pagamento con {contratto.METHOD_NAMES[method]} è confermato ricevi la ricevuta con la proforma della fattura elettronica, "
                     "e l'abbonamento annuale parte da subito.</p>")
         html_ = (f"<div style=\"font-family:Arial,sans-serif;color:#1b2b45;max-width:580px;margin:auto;border-top:4px solid #2340a8;padding:24px\">"
                  f"<h2 style=\"color:#2340a8\">Grazie per l'ordine, {_e(billing.get('denominazione') or billing.get('nome') or tenant.name)}</h2>"

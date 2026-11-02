@@ -17,6 +17,8 @@ from app.pagamenti.pdf import BLU, INK, MUTED, _e, eur
 
 CONTRACT_VERSION = "1.0"
 
+METHOD_NAMES = {"carta": "carta", "paypal": "PayPal", "bonifico": "bonifico"}
+
 CLAUSES = [
     ("Oggetto", "{cedente} (di seguito «BluCode») concede al Cliente il diritto di usare, in modalità online (SaaS), il software "
                 "<b>{prodotto}</b>, pacchetto <b>{piano}</b>, e di ricevere l'assistenza prevista dal pacchetto. Il software resta di proprietà di BluCode: "
@@ -24,9 +26,9 @@ CLAUSES = [
     ("Durata e rinnovo", "Il contratto dura dodici mesi dalla data di attivazione, indicata nella ricevuta di pagamento. Alla scadenza non si rinnova "
                          "da solo: BluCode avvisa il Cliente per email e il Cliente può rinnovare dall'area «Abbonamento». Se il rinnovo non arriva, "
                          "valgono il periodo di tolleranza e la sola lettura previsti dai termini di utilizzo, poi l'accesso viene sospeso."),
-    ("Corrispettivo e pagamento", "Il canone annuale è di <b>{importo}</b>{bollo_txt}, per un totale di <b>{totale}</b>, pagato in anticipo con carta o bonifico. "
+    ("Corrispettivo e pagamento", "Il canone annuale è di <b>{importo}</b>{bollo_txt}, per un totale di <b>{totale}</b>, pagato in anticipo con carta, PayPal o bonifico. "
                                   "BluCode opera in regime forfettario (art. 1, commi 54-89, L. 190/2014): fattura senza IVA e senza ritenuta d'acconto. "
-                                  "La fattura elettronica è emessa subito se si paga con carta; se si paga con bonifico, dopo l'accredito sul conto di BluCode. "
+                                  "La fattura elettronica è emessa subito se si paga con carta o PayPal; se si paga con bonifico, dopo l'accredito sul conto di BluCode. "
                                   "Il canone non è rimborsabile, salvo quanto previsto dalla legge."),
     ("Termini di utilizzo", "Fanno parte del contratto, e il Cliente dichiara di averli letti e accettati, i <b>termini di utilizzo</b> "
                             "(versione {termini}), che regolano accessi, dati, assistenza, sospensione, sola lettura, cancellazione dei dati e responsabilità."),
@@ -87,7 +89,7 @@ def contract_pdf(*, product: str, plan_name: str, amount, stamp, total, billing:
         story += [Paragraph(f"{i}. {title}", h2), Paragraph(text.format(**vals), n)]
     story += [Spacer(1, 6 * mm), Paragraph(
         f"Il Cliente ha accettato il contratto e i termini di utilizzo con il modulo di acquisto del sito (accettazione registrata con data, ora e indirizzo IP). "
-        f"Metodo di pagamento scelto: {'carta' if method == 'carta' else 'bonifico'}. "
+        f"Metodo di pagamento scelto: {METHOD_NAMES.get(method, 'bonifico')}. "
         "Ai sensi degli artt. 1341 e 1342 c.c. il Cliente professionista approva specificamente le clausole 7 (Responsabilità) e 9 (Legge e foro).", small)]
     if consumer:
         story += [PageBreak(), Paragraph("Modulo tipo di recesso", h1),

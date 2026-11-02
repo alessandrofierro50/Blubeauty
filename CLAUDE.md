@@ -166,8 +166,9 @@ Questo repository è BluBeauty, una parte del progetto BluCode Informatica. La m
 - **Coerenza col sito:** se cambi funzioni, prezzi, nome o stato del prodotto, segnala che va aggiornata la sua pagina (`content.py` in `sito_blucodeinformatica.it`) e annotalo in `comune/da-allineare.md`. Le decisioni che toccano più parti vanno in `comune/decisioni.md`.
 - **A fine sessione**, o quando l'utente dice «salva la sessione»: nel repository di progetto scrivi `blubeauty/sessioni/AAAA-MM-GG.md` (modello `_modelli/sessione.md`; se esiste già aggiungi una sezione), aggiorna `blubeauty/STATO.md` e, se lo stato cambia, la tabella del `README.md`; poi commit e push su `main` di quel repository.
 - [x] Acquisto dal sito (2026-11-02, contratto comune `comune/acquisto-dal-sito.md`): `GET/POST /api/public/acquisto` (app/saas/public_router.py):
-      dati di fatturazione completi, pacchetto, SOLO annuale, carta (Stripe Checkout, ritorno al sito con `return_url`) o bonifico.
+      dati di fatturazione completi, pacchetto, SOLO annuale, carta (Stripe Checkout, ritorno al sito con `return_url`), PayPal (ritorno da
+      /api/pagamenti/paypal/ritorno col parametro `r`, seguito solo se sotto WEBSITE_URL) o bonifico.
       Crea l'azienda come la prova (credenziali per email), salva `billing_data`, apre il pagamento con `pagamenti.service.checkout`
       e manda l'email d'ordine con contratto PDF compilato (app/saas/contratto.py, BOZZA da far rivedere a un legale; modulo di recesso
-      per i privati), termini, privacy e link a manuale e video (`MANUAL_URL`, `VIDEOS_URL`, `PRIVACY_PDF_URL`). Carta: fattura subito dal
+      per i privati), termini, privacy e link a manuale e video (`MANUAL_URL`, `VIDEOS_URL`, `PRIVACY_PDF_URL`). Carta e PayPal: fattura subito dal
       webhook; bonifico: nessun documento finché il super admin non conferma l'accredito. Test in `tests/test_pagamenti.py` (`-k acquisto`).

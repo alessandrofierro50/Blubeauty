@@ -45,6 +45,7 @@ class Gateway:
         self.stripe_sessions: list[dict] = []
         self.paypal_orders: list[dict] = []
         self.captures = 0
+        self.capture_fails = False
         self.verify = "SUCCESS"
         self.expired: list[str] = []
 
@@ -73,6 +74,8 @@ class Gateway:
                     {"rel": "payer-action", "href": f"https://www.sandbox.paypal.com/checkoutnow?token={oid}"}]})
             if path.endswith("/capture"):
                 self.captures += 1
+                if self.capture_fails:
+                    return httpx.Response(422, json={"name": "UNPROCESSABLE_ENTITY", "details": [{"issue": "INSTRUMENT_DECLINED"}]})
                 return httpx.Response(201, json={"id": path.split("/")[-2], "status": "COMPLETED", "purchase_units": [
                     {"payments": {"captures": [{"id": "CAPTURE1", "status": "COMPLETED"}]}}]})
             if path == "/v1/notifications/verify-webhook-signature":
@@ -775,7 +778,7 @@ def pdfs(monkeypatch):
 
 def test_acquisto_info_solo_annuale(client, gw):
     r = client.get("/api/public/acquisto").json()
-    assert r["enabled"] and r["periodicita"] == "annuale" and set(r["metodi"]) == {"carta", "bonifico"}
+    assert r["enabled"] and r["periodicita"] == "annuale" and r["metodi"] == ["carta", "paypal", "bonifico"]
     assert all(set(p["prezzi"]) == {"annuale"} for p in r["piani"])
 
 
@@ -829,5 +832,82 @@ def test_acquisto_dati_e_consensi_controllati(client, gw, pdfs):
     bad = {**AZIENDA, "partita_iva": "12345678901"}
     assert client.post("/api/public/acquisto", json=_buy(billing=bad)).json()["detail"]["code"] == "dati_fatturazione"
     assert client.post("/api/public/acquisto", json=_buy(plan_code="NONESISTE")).status_code == 404
-    assert client.post("/api/public/acquisto", json=_buy(method="paypal")).status_code == 422
+    assert client.post("/api/public/acquisto", json=_buy(method="satispay")).status_code == 422
     assert client.post("/api/public/acquisto", json=_buy(website="x")).json() == {"ok": True, "robot": True}
+
+
+def test_acquisto_paypal_torna_al_sito_e_fattura_subito(client, gw, pdfs, owner_db):
+    from urllib.parse import parse_qs as qs, urlsplit
+    OUTBOX.clear()
+    r = client.post("/api/public/acquisto", json=_buy(method="paypal"))
+    assert r.status_code == 201, r.text
+    j = r.json()
+    assert j["redirect_url"] == "https://www.sandbox.paypal.com/checkoutnow?token=ORDER1" and j["bonifico"] is None
+    pid = j["pagamento"]
+    p = _payment(owner_db, pid)
+    assert p.status == "in_attesa" and p.method == "paypal" and p.period == "annuale" and p.invoice_number is None
+    assert gw.paypal_orders[0]["body"]["purchase_units"][0]["amount"] == {"currency_code": "EUR", "value": "292.00"}
+    ctx = gw.paypal_orders[0]["body"]["payment_source"]["paypal"]["experience_context"]
+    assert ctx["cancel_url"] == "https://blucodeinformatica.it/acquisto/esito/?stato=annullato"
+    ret = urlsplit(ctx["return_url"])
+    assert f"{ret.scheme}://{ret.netloc}{ret.path}" == "https://blubeauty.test/api/pagamenti/paypal/ritorno"
+    q = {k: v[0] for k, v in qs(ret.query).items()}
+    assert q == {"id": pid, "r": "https://blucodeinformatica.it/acquisto/esito/?stato=ok"}
+    # email al cliente e a BluCode: «PayPal», mai carta o bonifico, e nessuna istruzione di bonifico
+    order = next(m for m in OUTBOX if m["subject"].startswith("Conferma d'ordine"))
+    assert "pagamento con PayPal" in order["html"] and "IBAN" not in order["html"] and "carta" not in order["html"]
+    notice = next(m for m in OUTBOX if m["subject"].startswith("Nuovo ordine dal sito"))
+    assert "annuale, PayPal," in notice["html"] and "Bonifico" not in notice["html"]
+
+    # ritorno da PayPal (PayPal aggiunge token e PayerID): cattura lato server e torna alla pagina del sito
+    r = client.get(ctx["return_url"] + "&token=ORDER1&PayerID=X", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "https://blucodeinformatica.it/acquisto/esito/?stato=ok"
+    assert gw.captures == 1 and _payment(owner_db, pid).status == "in_attesa"
+    # la conferma vera è il webhook: fattura subito, MP08
+    ev = _paypal_capture_event("ORDER1", pid, "292.00")
+    assert client.post("/api/pagamenti/webhook/paypal", json=ev, headers=PP_HEADERS).status_code == 200
+    p = _payment(owner_db, pid)
+    assert p.status == "pagato" and p.invoice_number == 1 and p.invoice_xml
+    _, x = _xml(owner_db, pid)
+    assert x.findtext(".//DettaglioPagamento/ModalitaPagamento") == "MP08"
+
+
+def test_acquisto_paypal_ritorno_solo_verso_il_sito(client, gw, pdfs):
+    from urllib.parse import quote
+    pid = client.post("/api/public/acquisto", json=_buy(method="paypal")).json()["pagamento"]
+    base = f"/api/pagamenti/paypal/ritorno?id={pid}&token=ORDER1&r="
+    app_ok = f"https://blubeauty.test/pagamento/esito?stato=ok&id={pid}"
+    for bad in ("https://evil.example/x?stato=ok", "https://blucodeinformatica.it.evil.example/?stato=ok",
+                "//evil.example/", "javascript:alert(1)"):
+        r = client.get(base + quote(bad, safe=""), follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == app_ok, bad
+    # token sbagliato con r valido: si torna al sito con stato=errore, senza catturare
+    site = quote("https://blucodeinformatica.it/acquisto/esito/?stato=ok", safe="")
+    r = client.get(f"/api/pagamenti/paypal/ritorno?id={pid}&token=ALTRO&r={site}", follow_redirects=False)
+    assert r.headers["location"] == "https://blucodeinformatica.it/acquisto/esito/?stato=errore"
+
+
+def test_acquisto_paypal_cattura_fallita(client, gw, pdfs, owner_db):
+    from urllib.parse import quote
+    pid = client.post("/api/public/acquisto", json=_buy(method="paypal")).json()["pagamento"]
+    gw.capture_fails = True
+    site = quote("https://blucodeinformatica.it/acquisto/esito/?stato=ok", safe="")
+    r = client.get(f"/api/pagamenti/paypal/ritorno?id={pid}&token=ORDER1&r={site}", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "https://blucodeinformatica.it/acquisto/esito/?stato=errore"
+    # r non valido: pagina di esito dell'app come prima
+    r = client.get(f"/api/pagamenti/paypal/ritorno?id={pid}&token=ORDER1&r=https%3A%2F%2Fevil.example%2F", follow_redirects=False)
+    assert r.headers["location"] == f"https://blubeauty.test/pagamento/esito?stato=errore&id={pid}"
+    assert _payment(owner_db, pid).status == "in_attesa"
+
+
+def test_acquisto_paypal_senza_return_url_usa_l_app(client, gw, pdfs):
+    pid = client.post("/api/public/acquisto", json=_buy(method="paypal", return_url="https://altro.example/esito")).json()["pagamento"]
+    ctx = gw.paypal_orders[0]["body"]["payment_source"]["paypal"]["experience_context"]
+    assert ctx["return_url"] == f"https://blubeauty.test/api/pagamenti/paypal/ritorno?id={pid}"
+    assert ctx["cancel_url"] == f"https://blubeauty.test/pagamento/esito?stato=annullato&id={pid}"
+
+
+def test_acquisto_paypal_senza_chiavi(client, gw, pdfs, monkeypatch):
+    monkeypatch.setattr(get_settings(), "paypal_secret", "")
+    assert client.get("/api/public/acquisto").json()["metodi"] == ["carta", "bonifico"]
+    assert client.post("/api/public/acquisto", json=_buy(method="paypal")).status_code == 404

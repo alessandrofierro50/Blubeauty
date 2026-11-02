@@ -91,6 +91,12 @@ L'ordine (`intent CAPTURE`, importo dal server) si crea lato server; al ritorno 
 arriva dal webhook `PAYMENT.CAPTURE.COMPLETED`, verificato chiedendo a PayPal `/v1/notifications/verify-webhook-signature`.
 Se il cliente chiude il browser prima del ritorno, la cattura parte dall'evento `CHECKOUT.ORDER.APPROVED`.
 
+**Acquisto dal sito** (`POST /api/public/acquisto` con `method=paypal`, contratto comune `comune/acquisto-dal-sito.md`): l'ordine
+si crea con `return_url` = `/api/pagamenti/paypal/ritorno?id=<pagamento>&r=<pagina del sito con stato=ok>` e `cancel_url` =
+pagina del sito con `stato=annullato`. Dopo la cattura il ritorno porta a `r` (con `stato=errore` se la cattura fallisce), ma
+solo se `r` è sotto `WEBSITE_URL`: altrimenti si va alla pagina di esito dell'app come nel rinnovo (niente open redirect).
+Se il sito non manda `return_url` valido si usano gli indirizzi dell'app. Fattura subito alla conferma del webhook, come la carta.
+
 ## 6. Bonifico
 
 Il cliente vede intestatario, IBAN, importo e causale unica `BLUCODE BG <8 caratteri dell'id>`. Quando l'accredito arriva:
