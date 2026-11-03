@@ -162,20 +162,24 @@ async def paypal_webhook(request: Request, db: Session = Depends(get_db)):
 
 
 @public.get("/paypal/ritorno")
-def paypal_return(id: uuid.UUID, token: str, db: Session = Depends(get_db)):
+def paypal_return(id: uuid.UUID, token: str, r: str | None = None, db: Session = Depends(get_db)):
     """Il cliente torna da PayPal dopo aver approvato: si cattura l'ordine lato server e si va alla pagina di esito,
-    che attende la conferma (webhook PAYMENT.CAPTURE.COMPLETED)."""
+    che attende la conferma (webhook PAYMENT.CAPTURE.COMPLETED). Con `r` (acquisto dal sito) si torna alla pagina del
+    sito, solo se è sotto WEBSITE_URL; altrimenti alla pagina di esito dell'app."""
     url = get_settings().public_url.rstrip("/")
-    r = svc.route(db, id)
-    if r is None or r.provider != "paypal" or r.provider_ref != token:
-        return RedirectResponse(f"{url}/pagamento/esito?stato=errore", status_code=303)
+    site = r if svc.is_site_url(r) else None
+    route = svc.route(db, id)
+    if route is None or route.provider != "paypal" or route.provider_ref != token:
+        return RedirectResponse(svc.site_return(site, "errore") if site else f"{url}/pagamento/esito?stato=errore",
+                                status_code=303)
     try:
         svc.paypal_capture_order(db, token)
     except pv.ProviderError:
         db.rollback()
-        return RedirectResponse(f"{url}/pagamento/esito?stato=errore&id={id}", status_code=303)
+        return RedirectResponse(svc.site_return(site, "errore") if site else f"{url}/pagamento/esito?stato=errore&id={id}",
+                                status_code=303)
     db.commit()
-    return RedirectResponse(f"{url}/pagamento/esito?stato=ok&id={id}", status_code=303)
+    return RedirectResponse(site or f"{url}/pagamento/esito?stato=ok&id={id}", status_code=303)
 
 
 # ====================================================================== super amministratore

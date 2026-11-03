@@ -23,6 +23,7 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -113,6 +114,22 @@ def admin_settings(db: Session) -> dict:
             "paypal_mode": s.paypal_mode,
             "webhooks": {"stripe": f"{s.public_url.rstrip('/')}/api/pagamenti/webhook/stripe",
                          "paypal": f"{s.public_url.rstrip('/')}/api/pagamenti/webhook/paypal"}}
+
+
+# ====================================================================== indirizzi del sito
+
+
+def is_site_url(u: str | None) -> bool:
+    """True se `u` è una pagina del sito (WEBSITE_URL): solo lì si torna dopo un pagamento, mai su altri domini."""
+    base = get_settings().website_url.rstrip("/")
+    return bool(u and base and (u == base or u.startswith(base + "/") or u.startswith(base + "?")))
+
+
+def site_return(u: str, stato: str) -> str:
+    """Pagina del sito con `stato` impostato (sostituisce lo stato già presente, es. ok → errore)."""
+    parts = urlsplit(u)
+    q = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "stato"] + [("stato", stato)]
+    return urlunsplit(parts._replace(query=urlencode(q)))
 
 
 # ====================================================================== indice di sistema
@@ -284,9 +301,11 @@ def checkout(db: Session, tenant: Tenant, *, plan_code: str, period: str, method
                                    success_url=return_urls[0] if return_urls else f"{url}/pagamento/esito?stato=ok&id={p.id}",
                                    cancel_url=return_urls[1] if return_urls else f"{url}/pagamento/esito?stato=annullato&id={p.id}")
         else:
+            # acquisto dal sito: dopo la cattura si torna alla pagina del sito (parametro r, controllato al ritorno)
+            back = f"&r={quote(return_urls[0], safe='')}" if return_urls else ""
             r = pv.paypal_create_order(payment_id=str(p.id), causale=causale, description=desc, total=a.total,
-                                       return_url=f"{url}/api/pagamenti/paypal/ritorno?id={p.id}",
-                                       cancel_url=f"{url}/pagamento/esito?stato=annullato&id={p.id}")
+                                       return_url=f"{url}/api/pagamenti/paypal/ritorno?id={p.id}{back}",
+                                       cancel_url=return_urls[1] if return_urls else f"{url}/pagamento/esito?stato=annullato&id={p.id}")
     except pv.ProviderError as exc:
         p.status, p.error = "fallito", str(exc)
         _sync_route(db, p)
