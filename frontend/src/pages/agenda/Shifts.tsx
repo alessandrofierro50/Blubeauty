@@ -1,6 +1,6 @@
 // Turni e assenze: per ogni operatore e giorno l'orario effettivo (settimana, settimane alterne, ferie, malattia,
 // permessi, orari diversi) e le chiusure del salone. Un tocco su una casella segna o modifica un'eccezione.
-import { ActionIcon, Alert, Anchor, Badge, Box, Button, Group, Modal, Paper, ScrollArea, Select, SimpleGrid, Stack, Table, Text, TextInput, UnstyledButton } from '@mantine/core'
+import { ActionIcon, Alert, Anchor, Badge, Box, Button, Group, Modal, Paper, ScrollArea, SimpleGrid, Stack, Table, Text, TextInput, UnstyledButton } from '@mantine/core'
 import { DateInput } from '@mantine/dates'
 import { IconBrandWhatsapp, IconBuildingStore, IconChevronLeft, IconChevronRight, IconPlus, IconTrash } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { appApi, isoDate } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
+import { EntitySelect } from '../../EntitySelect'
 
 type Absence = { id: string; staff_id: string | null; kind: string; label: string; date_from: string; date_to: string; hours: string[][]; note: string | null }
 type Plan = { hours: string[][]; absence: Absence | null }
@@ -189,8 +190,8 @@ function AbsenceModal({ value, staff, salon, onClose, onSaved }: { value: Partia
   return (
     <Modal opened onClose={onClose} title={f.id ? 'Modifica' : closure ? 'Chiusura del salone' : 'Segna un\'assenza o un cambio di turno'} size="md">
       <Stack>
-        <Select label="Chi" allowDeselect={false} value={f.staff_id ?? 'salone'} onChange={setWho}
-          data={[...staff.map((s) => ({ value: s.id, label: s.first_name })), { value: 'salone', label: 'Tutto il salone (chiusura)' }]} />
+        <EntitySelect kind="operatori" label="Chi" value={f.staff_id ?? 'salone'} onChange={(v) => v && setWho(v)} optionLabel={(s) => s.first_name}
+          filter={(s) => s.active || staff.some((x) => x.id === s.id)} extra={[{ value: 'salone', label: 'Tutto il salone (chiusura)' }]} />
         {!closure && (
           <SimpleGrid cols={2} spacing="xs">
             {PERSONAL.map(([k, label]) => (

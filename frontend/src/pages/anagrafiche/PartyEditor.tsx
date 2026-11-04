@@ -7,6 +7,7 @@ import { Loading, notifyError, notifyOk } from '../../components'
 import CustomerPrices from './CustomerPrices'
 import { CustomField } from './ItemEditor'
 import { A, dec, num, opts, useLookups } from './shared'
+import { TableSelect } from './TableSelect'
 
 const EMPTY: any = {
   code: '', is_customer: true, is_supplier: false, person_type: 'azienda', name: '', first_name: '', last_name: '',
@@ -131,16 +132,16 @@ export default function PartyEditor() {
         <Tabs.Panel value="commerciale">
           <Paper withBorder p="md">
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-              <Select label="Pagamento" data={opts(L.payments.filter((x) => x.active))} value={p.payment_term_id} onChange={(v) => set('payment_term_id', v)} clearable />
- {p.is_customer && <Select label="Categoria cliente" data={opts(L.customerCategories)} value={p.customer_category_id} onChange={(v) => set('customer_category_id', v)} clearable />}
-              {p.is_customer && <Select label="Listino" data={opts(L.lists, (l) => `${l.code} — ${l.name}`)} value={p.price_list_id} onChange={(v) => set('price_list_id', v)} clearable />}
+              <TableSelect kind="pagamenti" label="Pagamento" filter={(x) => x.active} value={p.payment_term_id} onChange={(v) => set('payment_term_id', v)} clearable />
+ {p.is_customer && <TableSelect kind="categorie-clienti" label="Categoria cliente" value={p.customer_category_id} onChange={(v) => set('customer_category_id', v)} clearable />}
+              {p.is_customer && <TableSelect kind="listini" label="Listino" value={p.price_list_id} onChange={(v) => set('price_list_id', v)} clearable />}
               <Group grow gap="xs">
                 <NumberInput label="Sconto 1 %" value={num(p.discount1)} onChange={(v) => set('discount1', v)} min={0} max={100} />
                 <NumberInput label="Sconto 2 %" value={num(p.discount2)} onChange={(v) => set('discount2', v)} min={0} max={100} />
               </Group>
               <TextInput label="IBAN" {...field('iban')} />
               <TextInput label="Banca" {...field('bank_name')} />
-              <Select label="Esenzione IVA abituale" data={opts(L.vat.filter((v) => v.nature))} value={p.vat_rate_id} onChange={(v) => set('vat_rate_id', v)} clearable />
+              <TableSelect kind="aliquote-iva" label="Esenzione IVA abituale" filter={(v) => !!v.nature} value={p.vat_rate_id} onChange={(v) => set('vat_rate_id', v)} clearable />
               <TextInput label="Dichiarazione d'intento (n. e data)" {...field('exemption_letter')} />
             </SimpleGrid>
             {p.is_customer && (

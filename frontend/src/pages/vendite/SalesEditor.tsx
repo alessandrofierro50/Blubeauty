@@ -16,6 +16,8 @@ import { useWarehouses } from '../magazzino/shared'
 import SdiPanel from '../fatturapa/SdiPanel'
 import { useModule } from '../fatturapa/shared'
 import { CustomerPicker, S, TITLE, StatusBadge, docNumber, useMe } from './shared'
+import { TableSelect } from '../anagrafiche/TableSelect'
+import { EntitySelect } from '../../EntitySelect'
 
 const EMPTY_LINE = { item_id: null, variant_id: null, description: '', unit: '', quantity: 1, unit_price: '', discount1: '', discount2: '', discount3: '', vat_rate_id: null, lot_number: '', serials: [] as string[], price_source: null, unit_cost: null }
 // Passaggi successivi: [tipo, etichetta del pulsante]. Il primo è il pulsante principale, gli altri sono nel menu accanto.
@@ -284,9 +286,9 @@ export default function SalesEditor() {
           <CustomerPicker label="Cliente" value={d.party_id} onChange={(v) => setD((c: any) => ({ ...c, party_id: v, destination_id: null, payment_term_id: null }))} disabled={!draft} required />
           <TextInput type="date" label="Data" value={d.doc_date ?? ''} onChange={(e) => set('doc_date', e.currentTarget.value)} disabled={!draft} placeholder="oggi" />
           {t === 'PRV' && <TextInput type="date" label="Valido fino al" value={d.valid_until ?? ''} onChange={(e) => set('valid_until', e.currentTarget.value)} disabled={!draft} />}
-          <Select label="Pagamento" data={L.payments.map((p) => ({ value: p.id, label: p.description }))} value={d.payment_term_id} onChange={(v) => set('payment_term_id', v)} clearable disabled={!draft} />
+          <TableSelect kind="pagamenti" label="Pagamento" value={d.payment_term_id} onChange={(v) => set('payment_term_id', v)} clearable disabled={!draft} />
           {party?.addresses?.length > 0 && <Select label="Destinazione merce" data={party.addresses.map((a: any) => ({ value: a.id, label: `${a.label} – ${a.address}, ${a.city ?? ''}` }))} value={d.destination_id} onChange={(v) => set('destination_id', v)} clearable placeholder="sede del cliente" disabled={!draft} />}
-          {whs.length > 1 && t !== 'PRV' && <Select label="Magazzino" data={whs.map((w) => ({ value: w.id, label: w.name }))} value={d.warehouse_id} onChange={(v) => set('warehouse_id', v)} disabled={!draft} allowDeselect={false} />}
+          {whs.length > 1 && t !== 'PRV' && <EntitySelect kind="magazzini" label="Magazzino" value={d.warehouse_id} onChange={(v) => v && set('warehouse_id', v)} disabled={!draft} />}
           {seriesOpts.length > 0 && <Select label="Sezionale" data={[{ value: '_', label: 'Principale' }, ...seriesOpts.map((x) => ({ value: x.code, label: `${x.code}${x.description ? ' – ' + x.description : ''}` }))]}
             value={series || '_'} onChange={(v) => set('series', v === '_' ? '' : v)} allowDeselect={false} disabled={!draft} />}
           {draft && isAdmin && <NumberInput label="Numero" placeholder={nextNo ? `automatico (n. ${nextNo})` : 'automatico'} value={d.manual_number ?? ''} onChange={(v) => set('manual_number', v || null)} min={1} allowDecimal={false} hideControls
@@ -351,7 +353,7 @@ export default function SalesEditor() {
                       {l.price_source && !descriptive && <Text size="10px" c="dimmed" truncate>{l.price_source}</Text>}
                     </Table.Td>
                     <Table.Td>{!descriptive && <Group gap={2} wrap="nowrap">{['discount1', 'discount2', 'discount3'].map((k) => draft ? <NumberInput key={k} size="xs" hideControls value={num(l[k])} onChange={(v) => updLine(i, { [k]: v, price_auto: false })} min={0} max={100} w={44} /> : l[k] ? <Text key={k} size="xs">{Number(l[k])}%</Text> : null)}</Group>}</Table.Td>
-                    <Table.Td>{!descriptive && (draft ? <Select size="xs" data={L.vat.filter((v) => v.active).map((v) => ({ value: v.id, label: v.code }))} value={l.vat_rate_id} onChange={(v) => updLine(i, { vat_rate_id: v })} /> : <Text size="xs">{l.vat_nature ?? `${Number(l.vat_rate)}%`}</Text>)}</Table.Td>
+                    <Table.Td>{!descriptive && (draft ? <TableSelect kind="aliquote-iva" size="xs" short filter={(v) => v.active} value={l.vat_rate_id} onChange={(v) => updLine(i, { vat_rate_id: v })} /> : <Text size="xs">{l.vat_nature ?? `${Number(l.vat_rate)}%`}</Text>)}</Table.Td>
                     <Table.Td ta="right">{!descriptive && <><Text fw={600} size="sm">{fmtEuro(lt)}</Text>{m != null && <Text size="10px" c={m < 0 ? 'red' : m < 10 ? 'orange' : 'dimmed'}>margine {pct(m)}</Text>}</>}</Table.Td>
                     {draft && <Table.Td><ActionIcon variant="subtle" color="red" onClick={() => setD((c: any) => ({ ...c, lines: c.lines.filter((_: any, j: number) => j !== i) }))}><IconTrash size={16} /></ActionIcon></Table.Td>}
                   </Table.Tr>

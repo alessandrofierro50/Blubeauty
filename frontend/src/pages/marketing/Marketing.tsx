@@ -9,6 +9,7 @@ import { Loading, PageTitle, Stat, notifyError, notifyOk } from '../../component
 import type { AppCtx } from '../app/AppLayout'
 import { KIND_LABEL } from '../agenda/lib'
 import { WhatsAppChat } from '../agenda/WhatsAppChat'
+import { EntitySelect } from '../../EntitySelect'
 
 const IDEAS = [
   { name: 'Promo martedì e mercoledì', body: 'Ciao {nome}! 💙 Solo martedì e mercoledì da {salone}: piega a 15 €. Posti limitati, prenota dal telefono in 30 secondi 👉 {link}' },
@@ -225,7 +226,7 @@ function LoyaltySettings() {
           <TextInput label="Nome del premio" placeholder="Es. Piega in omaggio" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
           <NumberInput label="Punti necessari" value={edit.points} min={1} onChange={(v) => setEdit({ ...edit, points: v })} />
           <Select label="Tipo" data={Object.entries(KIND).map(([value, label]) => ({ value, label }))} value={edit.kind} onChange={(v) => setEdit({ ...edit, kind: v })} />
-          {edit.kind === 'servizio' ? <Select label="Servizio in omaggio" data={services.map((x) => ({ value: x.id, label: x.name }))} value={edit.service_id} onChange={(v) => setEdit({ ...edit, service_id: v })} />
+          {edit.kind === 'servizio' ? <EntitySelect kind="servizi" label="Servizio in omaggio" filter={(x) => x.active} value={edit.service_id} onChange={(v) => setEdit({ ...edit, service_id: v })} />
             : <NumberInput label={edit.kind === 'sconto_percento' ? 'Percentuale di sconto' : 'Sconto in euro'} value={edit.value} min={0} onChange={(v) => setEdit({ ...edit, value: v })} />}
           <Switch label="Attivo" checked={edit.active ?? true} onChange={(e) => setEdit({ ...edit, active: e.currentTarget.checked })} />
           <Button onClick={saveReward} disabled={!edit.name}>Salva</Button>

@@ -9,6 +9,8 @@ import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { dec, num, opts, useLookups } from '../anagrafiche/shared'
 import { ItemScanner } from '../magazzino/Operation'
 import { useWarehouses } from '../magazzino/shared'
+import { TableSelect } from '../anagrafiche/TableSelect'
+import { EntitySelect } from '../../EntitySelect'
 
 export const P = (path: string, opts?: { method?: string; body?: unknown }) => appApi('/api/acquisti' + path, opts)
 
@@ -221,8 +223,8 @@ export function PurchaseEditor() {
           <Select label="Fornitore" data={opts(suppliers, (s) => s.name)} value={d.party_id} onChange={(v) => set('party_id', v)} searchable disabled={!draft} />
           {d.doc_type !== 'ORF' && <TextInput label={`Numero ${d.doc_type === 'DDTF' ? 'DDT' : 'fattura'} del fornitore`} value={d.external_number ?? ''} onChange={(e) => set('external_number', e.currentTarget.value)} disabled={!draft} />}
           <TextInput type="date" label={d.doc_type === 'ORF' ? 'Data ordine' : 'Data documento'} value={d.doc_date ?? ''} onChange={(e) => set('doc_date', e.currentTarget.value)} disabled={!draft} />
-          <Select label="Magazzino" data={whs.map((w) => ({ value: w.id, label: w.name }))} value={d.warehouse_id} onChange={(v) => set('warehouse_id', v)} disabled={!draft} allowDeselect={false} />
-          <Select label="Pagamento" data={opts(L.payments)} value={d.payment_term_id} onChange={(v) => set('payment_term_id', v)} clearable disabled={!draft} />
+          <EntitySelect kind="magazzini" label="Magazzino" value={d.warehouse_id} onChange={(v) => v && set('warehouse_id', v)} disabled={!draft} />
+          <TableSelect kind="pagamenti" label="Pagamento" value={d.payment_term_id} onChange={(v) => set('payment_term_id', v)} clearable disabled={!draft} />
           <TextInput label="Riferimento" value={d.reference ?? ''} onChange={(e) => set('reference', e.currentTarget.value)} disabled={!draft} />
           {d.doc_type !== 'ORF' && <Switch mt={28} label={d.doc_type === 'NCF' ? 'Scarica il magazzino (reso)' : 'Carica il magazzino'} checked={d.moves_stock} onChange={(e) => set('moves_stock', e.currentTarget.checked)} disabled={!draft} />}
         </SimpleGrid>
@@ -252,7 +254,7 @@ export function PurchaseEditor() {
                   <Table.Td>
                     <Group gap={2} wrap="nowrap">{['discount1', 'discount2', 'discount3'].map((k) => draft ? <NumberInput key={k} size="xs" hideControls value={num(l[k])} onChange={(v) => updLine(i, k, v)} min={0} max={100} w={46} /> : l[k] ? <Text key={k} size="xs">{Number(l[k])}%</Text> : null)}</Group>
                   </Table.Td>
-                  <Table.Td>{draft ? <Select size="xs" data={L.vat.filter((v) => v.active).map((v) => ({ value: v.id, label: v.code }))} value={l.vat_rate_id} onChange={(v) => updLine(i, 'vat_rate_id', v)} /> : <Text size="xs">{l.vat_nature ?? `${Number(l.vat_rate)}%`}</Text>}</Table.Td>
+                  <Table.Td>{draft ? <TableSelect kind="aliquote-iva" size="xs" short filter={(v) => v.active} value={l.vat_rate_id} onChange={(v) => updLine(i, 'vat_rate_id', v)} /> : <Text size="xs">{l.vat_nature ?? `${Number(l.vat_rate)}%`}</Text>}</Table.Td>
                   <Table.Td ta="right" fw={600}>{fmtEuro(lineTotal(l))}</Table.Td>
                   {draft && <Table.Td><ActionIcon variant="subtle" color="red" onClick={() => set('lines', d.lines.filter((_: any, j: number) => j !== i))}><IconTrash size={16} /></ActionIcon></Table.Td>}
                 </Table.Tr>

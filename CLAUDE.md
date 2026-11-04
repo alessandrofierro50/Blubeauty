@@ -153,6 +153,15 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 - [x] 2026-11-01 — buoni regalo (residuo, biglietto, WhatsApp, pagina pubblica) e pacchetti di sedute a scalare.
 - [x] 2026-11-01 — buoni MULTIUSO (ricevuta non fiscale alla vendita, scontrino all'utilizzo pagato «con buono», ricevuta del
       saldo), buono intestato alla cliente, buoni e pacchetti nella cassa al banco, WhatsApp di buoni e pacchetti (migrazione 0028).
+- [x] 2026-11-04 — **tasto Elenco con «Nuovo»** (standard comune, portato da BluGest): accanto alle caselle di scelta un tasto (icona
+      elenco, anche F4) apre tutti gli elementi in ordine alfabetico con ricerca in basso, frecce e Invio, «Nuovo» che crea e lascia
+      scelto. `src/Lookup.tsx` (clienti/fornitori/articoli; `clienti-salone` = clienti dell'agenda da `GET /api/agenda/clienti?totale=true`
+      con `offset`, ricerca anche su città, P.IVA e CF, «Nuova cliente» con cellulare e consenso; `ListModal` per elenchi già caricati),
+      `src/EntitySelect.tsx` (magazzini, conti, **operatori**, **servizi**), `pages/anagrafiche/TableSelect.tsx` (pagamenti, IVA, UM,
+      categorie, marche, listini, categorie clienti). Nel salone: cliente nel nuovo appuntamento e nella modalità semplice («Tutte le
+      clienti (elenco)»), servizio, operatore in Turni, prodotti nell'incasso (`Pay.tsx`, con «Nuovo prodotto»), buoni e pacchetti,
+      «porta un'amica», servizio in omaggio, IVA dei servizi. Backend: `/api/anagrafiche/soggetti` cerca anche telefono e cellulare,
+      `/api/anagrafiche/articoli?ordine=descrizione`. Test: `test_agenda.py -k elenco`.
 - [ ] Confermare col commercialista il trattamento multiuso e il codice del pagamento «buono» sul registratore (Epson da verificare).
 - [ ] Manuale PDF e video: aggiornare la parte sui buoni (oggi descrive il monouso); voce dei video da scegliere.
 - [ ] Da valutare: abbonamenti ricorrenti, vendita online di buoni e pacchetti, firma su tablet dei consensi e delle condizioni,

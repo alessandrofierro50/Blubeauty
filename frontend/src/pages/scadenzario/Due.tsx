@@ -12,6 +12,7 @@ import { Loading, PageTitle, Stat, notifyError, notifyOk } from '../../component
 import { num } from '../anagrafiche/shared'
 import { CustomerPicker } from '../vendite/shared'
 import { KIND_LABEL, METHODS, SC, download, methodOptions, useAccounts } from './shared'
+import { EntitySelect } from '../../EntitySelect'
 
 const STATI = [{ value: 'aperte', label: 'Aperte' }, { value: 'scadute', label: 'Scadute' }, { value: 'insolute', label: 'Insolute' }, { value: 'pagate', label: 'Pagate' }, { value: 'tutte', label: 'Tutte' }]
 
@@ -167,7 +168,7 @@ function BulkModal({ rows, accounts, onClose, onDone }: { rows: any[]; accounts:
       <Stack>
         <Text size="sm">Viene registrato il residuo di ogni scadenza: {inc ? <>incassi <b>{fmtEuro(inc)}</b></> : null}{inc && out ? ' · ' : ''}{out ? <>pagamenti <b>{fmtEuro(out)}</b></> : null}.</Text>
         <TextInput type="date" label="Data" value={when} onChange={(e) => setWhen(e.currentTarget.value)} />
-        <Select label="Conto" data={accountOptions(accounts)} value={acc} onChange={setAcc} />
+        <EntitySelect kind="conti" label="Conto" filter={(a) => a.active} optionLabel={(a) => `${a.name} (${KIND_LABEL[a.kind]})`} value={acc} onChange={setAcc} />
         <Group justify="flex-end"><Button onClick={go}>Registra</Button></Group>
       </Stack>
     </Modal>
@@ -194,7 +195,7 @@ function ManualModal({ accounts, onClose, onDone }: { accounts: any[]; onClose: 
           <TextInput type="date" label="Scadenza" value={f.due_date} onChange={(e) => set('due_date', e.currentTarget.value)} />
           <NumberInput label="Importo" value={num(f.amount)} onChange={(v) => set('amount', v)} min={0} decimalScale={2} prefix="€ " />
           <Select label="Modalità" data={methodOptions} value={f.method} onChange={(v) => set('method', v)} clearable />
-          <Select label="Conto" data={accountOptions(accounts)} value={f.account_id} onChange={(v) => set('account_id', v)} clearable />
+          <EntitySelect kind="conti" label="Conto" filter={(a) => a.active} optionLabel={(a) => `${a.name} (${KIND_LABEL[a.kind]})`} value={f.account_id} onChange={(v) => set('account_id', v)} clearable />
         </SimpleGrid>
         <CustomerPicker tipo="tutti" label="Soggetto (facoltativo)" value={f.party_id} onChange={(v) => set('party_id', v)} clearable />
         <Switch label="Si ripete" checked={f.repeat} onChange={(e) => set('repeat', e.currentTarget.checked)} />
@@ -276,7 +277,7 @@ function InstallmentDrawer({ id, accounts, onClose, onChanged }: { id: string | 
               <SimpleGrid cols={2} spacing="xs">
                 <TextInput type="date" size="xs" label="Data" value={pay.pay_date} onChange={(e) => setPay({ ...pay, pay_date: e.currentTarget.value })} />
                 <NumberInput size="xs" label="Importo" value={num(pay.amount)} onChange={(v) => setPay({ ...pay, amount: v })} decimalScale={2} prefix="€ " />
-                <Select size="xs" label="Conto" data={accountOptions(accounts)} value={pay.account_id} onChange={(v) => setPay({ ...pay, account_id: v })} />
+                <EntitySelect kind="conti" size="xs" label="Conto" filter={(a) => a.active} optionLabel={(a) => `${a.name} (${KIND_LABEL[a.kind]})`} value={pay.account_id} onChange={(v) => setPay({ ...pay, account_id: v })} />
                 <TextInput size="xs" label="Note" placeholder="es. bonifico CRO…" value={pay.notes} onChange={(e) => setPay({ ...pay, notes: e.currentTarget.value })} />
               </SimpleGrid>
               <Group justify="flex-end" mt="xs"><Button size="xs" onClick={addPayment}>Registra</Button></Group>

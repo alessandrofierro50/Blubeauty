@@ -9,6 +9,7 @@ import { brand } from '../../brand'
 import { PrintFooter, PrintHeader } from '../app/CompanySettings'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { A, downloadCsv, opts, useItemSearch, useLookups } from './shared'
+import { TableSelect } from './TableSelect'
 
 export function CatalogsList() {
   const nav = useNavigate()
@@ -127,7 +128,7 @@ export function CatalogEditor() {
                   <>
                     <Select label="Prezzi di un cliente" description="Con i suoi prezzi netti, sconti e promozioni" data={opts(customers, (x) => x.name)}
                       value={c.party_id} onChange={(v) => setC({ ...c, party_id: v, price_list_id: v ? null : c.price_list_id })} clearable searchable />
-                    {!c.party_id && <Select label="Oppure un listino" data={opts(L.lists, (l) => `${l.code} — ${l.name}`)} value={c.price_list_id} onChange={(v) => set('price_list_id', v)} clearable placeholder="predefinito" />}
+                    {!c.party_id && <TableSelect kind="listini" label="Oppure un listino" value={c.price_list_id} onChange={(v) => set('price_list_id', v)} clearable placeholder="predefinito" />}
                     <Switch label="Prezzi IVA inclusa" checked={c.vat_included} onChange={(e) => set('vat_included', e.currentTarget.checked)} />
                   </>
                 )}

@@ -1,8 +1,9 @@
-import { Badge, Select } from '@mantine/core'
+import { Badge, Group, Select } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 
 import { appApi } from '../../api'
+import { LookupButton, LookupModal } from '../../Lookup'
 import type { AppCtx } from '../app/AppLayout'
 
 export const S = (path: string, opts?: { method?: string; body?: unknown }) => appApi('/api/vendite' + path, opts)
@@ -53,9 +54,16 @@ export function CustomerPicker({ value, label, onChange, disabled, w, required, 
   }, [q])
   const data = [...(current ? [{ value: current.id, label: current.name }] : []),
     ...rows.filter((r) => r.id !== current?.id).map((r) => ({ value: r.id, label: r.name + (r.city ? ` · ${r.city}` : '') }))]
+  const [lookup, setLookup] = useState(false)
+  const pickRow = (r: any) => { setCurrent(r); setRows((x) => (x.some((y) => y.id === r.id) ? x : [r, ...x])); onChange(r.id, r.name) }
   return (
-    <Select label={label} placeholder={placeholder ?? (tipo === 'fornitori' ? 'Cerca fornitore' : tipo === 'tutti' ? 'Cerca cliente o fornitore' : 'Cerca cliente')} searchable data={data} value={value} w={w} required={required} clearable={clearable}
-      searchValue={q} onSearchChange={setQ} filter={({ options }) => options} disabled={disabled}
-      nothingFoundMessage="Nessun risultato" onChange={(v) => { const r = rows.find((x) => x.id === v); if (r) setCurrent(r); onChange(v, r?.name) }} />
+    <Group gap={4} align="flex-end" wrap="nowrap" w={w}>
+      <Select label={label} placeholder={placeholder ?? (tipo === 'fornitori' ? 'Cerca fornitore' : tipo === 'tutti' ? 'Cerca cliente o fornitore' : 'Cerca cliente')} searchable data={data} value={value} required={required} clearable={clearable}
+        searchValue={q} onSearchChange={setQ} filter={({ options }) => options} disabled={disabled} style={{ flex: 1, minWidth: 0 }}
+        onKeyDown={(e) => { if (e.key === 'F4') { e.preventDefault(); setLookup(true) } }}
+        nothingFoundMessage="Nessun risultato" onChange={(v) => { const r = rows.find((x) => x.id === v); if (r) setCurrent(r); onChange(v, r?.name) }} />
+      <LookupButton kind={tipo} onPick={pickRow} disabled={disabled} />
+      {lookup && <LookupModal kind={tipo} onClose={() => setLookup(false)} onPick={(r) => { setLookup(false); pickRow(r) }} />}
+    </Group>
   )
 }

@@ -8,6 +8,7 @@ import { fmtDate, fmtEuro, tokens } from '../../api'
 import { Loading, PageTitle, Stat, notifyError, notifyOk } from '../../components'
 import { categoryOptions, useLookups } from '../anagrafiche/shared'
 import { W, qty, useWarehouses } from './shared'
+import { EntitySelect } from '../../EntitySelect'
 
 const STATUS: Record<string, string> = { aperto: 'green', chiuso: 'gray', annullato: 'red' }
 
@@ -51,7 +52,7 @@ export function InventoryList() {
       <Modal opened={opened} onClose={() => setOpened(false)} title="Nuovo inventario">
         <Stack>
           <TextInput label="Nome" value={f.name} onChange={(e) => setF({ ...f, name: e.currentTarget.value })} />
-          {whs && <Select label="Magazzino" data={whs.map((w) => ({ value: w.id, label: w.name }))} value={f.warehouse_id} onChange={(v) => setF({ ...f, warehouse_id: v })} allowDeselect={false} />}
+          {whs && <EntitySelect kind="magazzini" label="Magazzino" value={f.warehouse_id} onChange={(v) => v && setF({ ...f, warehouse_id: v })} />}
           {L && <MultiSelect label="Solo queste categorie" placeholder="tutte" data={categoryOptions(L.categories)} value={f.category_ids} onChange={(v) => setF({ ...f, category_ids: v })} searchable clearable />}
           <TextInput label="Solo ubicazioni che iniziano con" placeholder="es. A- (vuoto = tutte)" value={f.location_prefix} onChange={(e) => setF({ ...f, location_prefix: e.currentTarget.value })} />
           <Group justify="flex-end"><Button onClick={create} disabled={!f.name || !f.warehouse_id}>Crea</Button></Group>
