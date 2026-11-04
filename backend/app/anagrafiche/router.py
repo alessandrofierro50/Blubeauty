@@ -434,6 +434,7 @@ def list_items(
     supplier_id: uuid.UUID | None = None,
     active: bool | None = True,
     under_min: bool = False,
+    ordine: str = Query("codice", pattern="^(codice|descrizione)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     ctx: TenantContext = Depends(reader),
@@ -457,7 +458,7 @@ def list_items(
     if active is not None:
         stmt = stmt.where(Item.active.is_(active))
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
-    items = db.scalars(stmt.order_by(Item.code).offset((page - 1) * page_size).limit(page_size)).all()
+    items = db.scalars(stmt.order_by(Item.description if ordine == "descrizione" else Item.code, Item.code).offset((page - 1) * page_size).limit(page_size)).all()
 
     default = _default_list(db)
     ids = [i.id for i in items]
@@ -692,14 +693,15 @@ def list_parties(
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(Party.name.ilike(like), Party.code.ilike(like), Party.vat_number.ilike(like),
-                              Party.tax_code.ilike(like), Party.city.ilike(like), Party.email.ilike(like)))
+                              Party.tax_code.ilike(like), Party.city.ilike(like), Party.email.ilike(like),
+                              Party.phone.ilike(like), Party.mobile.ilike(like)))
     if active is not None:
         stmt = stmt.where(Party.active.is_(active))
     total = ctx.db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = ctx.db.scalars(stmt.order_by(Party.name).offset((page - 1) * page_size).limit(page_size)).all()
     return {"total": total, "page": page, "page_size": page_size, "rows": [
         {"id": str(p.id), "code": p.code, "name": p.name, "vat_number": p.vat_number, "tax_code": p.tax_code,
-         "city": p.city, "province": p.province, "phone": p.phone, "email": p.email, "is_customer": p.is_customer,
+         "city": p.city, "province": p.province, "phone": p.phone, "mobile": p.mobile, "email": p.email, "is_customer": p.is_customer,
          "is_supplier": p.is_supplier, "person_type": p.person_type, "active": p.active} for p in rows]}
 
 

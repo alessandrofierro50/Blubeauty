@@ -8,6 +8,7 @@ import { Loading, notifyError, notifyOk } from '../../components'
 import AttachmentsEditor from './AttachmentsEditor'
 import ImagesEditor from './ImagesEditor'
 import { A, categoryOptions, dec, num, opts, useLookups } from './shared'
+import { TableSelect } from './TableSelect'
 
 const EMPTY: any = {
   code: '', description: '', long_description: '', notes: '', item_type: 'articolo', category_id: null, brand_id: null,
@@ -145,10 +146,10 @@ export default function ItemEditor() {
               <TextInput label="Descrizione" required {...field('description')} style={{ gridColumn: 'span 2' }} />
               <Select label="Tipo" data={[{ value: 'articolo', label: 'Articolo' }, { value: 'servizio', label: 'Servizio' }]} value={it.item_type}
                 onChange={(v) => setIt({ ...it, item_type: v, stock_managed: v === 'articolo' ? it.stock_managed : false })} allowDeselect={false} />
-              <Select label="Categoria" data={categoryOptions(L.categories)} value={it.category_id} onChange={(v) => set('category_id', v)} clearable searchable />
-              <Select label="Marca" data={opts(L.brands)} value={it.brand_id} onChange={(v) => set('brand_id', v)} clearable searchable />
-              <Select label="Unità di misura" data={L.units.map((u) => ({ value: u.code, label: `${u.code} — ${u.description}` }))} value={it.unit} onChange={(v) => set('unit', v)} allowDeselect={false} searchable />
-              <Select label="Aliquota IVA" data={opts(L.vat.filter((v) => v.active))} value={it.vat_rate_id} onChange={(v) => set('vat_rate_id', v)} />
+              <TableSelect kind="categorie" label="Categoria" value={it.category_id} onChange={(v) => set('category_id', v)} clearable />
+              <TableSelect kind="marche" label="Marca" value={it.brand_id} onChange={(v) => set('brand_id', v)} clearable />
+              <TableSelect kind="unita-misura" valueKey="code" label="Unità di misura" value={it.unit} onChange={(v) => v && set('unit', v)} />
+              <TableSelect kind="aliquote-iva" label="Aliquota IVA" filter={(v) => v.active} value={it.vat_rate_id} onChange={(v) => set('vat_rate_id', v)} />
               <TextInput label="Famiglia" {...field('family')} />
               <TextInput label="Linea" {...field('line')} />
               <TextInput label="Stagione" placeholder="es. Primavera-Estate 2027" {...field('season')} />

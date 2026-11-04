@@ -387,3 +387,32 @@ def test_ricevuta_non_fiscale_termica_e_registratore(client, admin_headers):
     lines = [ln.get("text", "") for ln in js[0]["payload"]["lines"]]
     assert "RICEVUTA NON FISCALE" in lines and any(t.startswith("I tuoi punti fedeltà: 22") for t in lines)
     assert any(t.startswith("Scontrino fiscale n.") for t in lines)
+
+
+# ------------------------------------------------------------------------------------------- tasto «Elenco» (2026-11-04)
+def test_elenco_clienti_ricerca_e_pagine(client, admin_headers):
+    """Finestra Elenco: clienti in ordine alfabetico a pagine con il totale, ricerca anche su città, P.IVA, CF e telefono;
+    articoli in ordine di descrizione; soggetti cercati anche per telefono e cellulare."""
+    _, h = salon(client, admin_headers, "Salone Elenco")
+    client_(client, h, "Zoe", "Bianchi", "333 0000001")
+    client_(client, h, "Anna", "Verdi", "333 0000002")
+    laura = client_(client, h, "Laura", "Esposito", "347 9999999")
+    full = client.get(f"/api/anagrafiche/soggetti/{laura['id']}", headers=h).json()
+    r = client.put(f"/api/anagrafiche/soggetti/{laura['id']}", headers=h, json={**full, "city": "Matera", "tax_code": "RSSMRA80A01H501U"})
+    assert r.status_code == 200, r.text
+
+    page = client.get(f"{AG}/clienti?totale=true&limit=2", headers=h).json()
+    assert page["total"] == 3 and [x["name"] for x in page["rows"]] == ["Bianchi Zoe", "Esposito Laura"]
+    rest = client.get(f"{AG}/clienti?totale=true&limit=2&offset=2", headers=h).json()
+    assert [x["name"] for x in rest["rows"]] == ["Verdi Anna"]
+    for q in ("Matera", "RSSMRA", "9999999"):
+        assert [x["id"] for x in client.get(f"{AG}/clienti?q={q}", headers=h).json()] == [laura["id"]], q
+    # senza `totale` resta un elenco semplice (lo usano le altre pagine)
+    assert isinstance(client.get(f"{AG}/clienti", headers=h).json(), list)
+
+    assert client.get("/api/anagrafiche/soggetti?q=9999999", headers=h).json()["rows"][0]["mobile"] == "347 9999999"
+    for code, desc in (("A1", "Shampoo"), ("B1", "Balsamo")):
+        assert client.post("/api/anagrafiche/articoli", headers=h, json={"code": code, "description": desc}).status_code == 201
+    by_desc = client.get("/api/anagrafiche/articoli?ordine=descrizione", headers=h).json()["rows"]
+    assert [x["description"] for x in by_desc] == ["Balsamo", "Shampoo"]
+    assert [x["code"] for x in client.get("/api/anagrafiche/articoli", headers=h).json()["rows"]] == ["A1", "B1"]

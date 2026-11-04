@@ -1,11 +1,12 @@
 // Incasso semplice e stampa della ricevuta non fiscale: pochi pulsanti grandi, le opzioni avanzate restano nascoste.
-import { Alert, Badge, Box, Button, Checkbox, Collapse, Group, Modal, NumberInput, Paper, SegmentedControl, Select, SimpleGrid, Stack, Text, TextInput, ThemeIcon } from '@mantine/core'
-import { IconCash, IconCheck, IconCreditCard, IconDeviceDesktop, IconGift, IconPackage, IconPrinter, IconReceipt, IconSettings } from '@tabler/icons-react'
+import { ActionIcon, Alert, Badge, Box, Button, Checkbox, Collapse, Group, Modal, NumberInput, Paper, SegmentedControl, Select, SimpleGrid, Stack, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core'
+import { IconCash, IconCheck, IconCreditCard, IconDeviceDesktop, IconGift, IconList, IconPackage, IconPrinter, IconReceipt, IconSettings } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 
 import { ApiError, appApi, fmtEuro } from '../../api'
 import { notifyError, notifyOk } from '../../components'
 import type { Appointment } from '../agenda/lib'
+import { ListModal, NewItem } from '../../Lookup'
 
 const BIG = { size: 'xl', radius: 'lg', h: 72, fz: 20 } as const
 export const NONFISCAL_REASONS = ['Utilizzo di un buono regalo già pagato', 'Seduta di un pacchetto già pagato', 'Pagamento di una fattura già emessa', 'Altro motivo']
@@ -44,10 +45,22 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
       const id = s.register_id ?? regs.find((r: any) => r.active)?.id ?? null
       setRegId(id)
       setNfAllowed(regs.find((r: any) => r.id === id)?.settings?.nonfiscal_allowed !== false)
-      if (id) appApi(`/api/pos/casse/${id}/catalogo`).then((c) => setCatalog(c.items.filter((i: any) => i.price && i.active))).catch(() => {})
+      if (id) loadCatalog(id).catch(() => {})
     }).catch(() => {})
   }, [appt.id])
 
+  // prodotti: prezzo al pubblico del listino della cassa; «Elenco» (anche F4) con «Nuovo prodotto»
+  const loadCatalog = (id: string) => appApi(`/api/pos/casse/${id}/catalogo`).then((c) => { const l = c.items.filter((i: any) => i.price && i.active); setCatalog(l); return l })
+  const [prodList, setProdList] = useState(false)
+  const addProduct = (c: any) => setProducts((p) => [...p, { item_id: c.id, label: c.description, price: Number(c.price) }])
+  async function productCreated(r: any) {
+    try {
+      const l = regId ? await loadCatalog(regId) : []
+      const c = l.find((x: any) => x.id === r.id)
+      if (c) { addProduct(c); setProdList(false); notifyOk('Prodotto creato e aggiunto') }
+      else notifyError(new Error('Prodotto creato, ma non ha un prezzo nel listino della cassa: indicalo in Anagrafiche › Articoli'))
+    } catch (e) { notifyError(e) }
+  }
   const services = Number(appt.total)
   const rw = client?.loyalty?.rewards?.find((r: any) => r.id === reward)
   const rewardValue = !rw ? 0 : rw.kind === 'sconto_percento' ? services * rw.value / 100
@@ -182,9 +195,16 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
         <Button variant="subtle" leftSection={<IconSettings size={16} />} onClick={() => setMore(!more)}>{more ? 'Nascondi' : 'Altre opzioni'}: prodotti, sconto, fattura</Button>
         <Collapse in={more}>
           <Stack>
-            <Select placeholder="Aggiungi un prodotto venduto" searchable value={null} size="md"
-              data={catalog.map((c) => ({ value: c.id, label: `${c.description} · ${fmtEuro(c.price)}` }))}
-              onChange={(v) => { const c = catalog.find((x) => x.id === v); if (c) setProducts([...products, { item_id: c.id, label: c.description, price: Number(c.price) }]) }} />
+            <Group gap={4} wrap="nowrap">
+              <Select placeholder="Aggiungi un prodotto venduto (F4: elenco)" searchable value={null} size="md" style={{ flex: 1 }}
+                data={catalog.map((c) => ({ value: c.id, label: `${c.description} · ${fmtEuro(c.price)}` }))}
+                onKeyDown={(e) => { if (e.key === 'F4') { e.preventDefault(); setProdList(true) } }}
+                onChange={(v) => { const c = catalog.find((x) => x.id === v); if (c) addProduct(c) }} />
+              <Tooltip label="Elenco dei prodotti (F4)"><ActionIcon variant="light" size={42} onClick={() => setProdList(true)} disabled={!regId} aria-label="Elenco dei prodotti"><IconList size={20} /></ActionIcon></Tooltip>
+            </Group>
+            {prodList && <ListModal title="Prodotti" rows={catalog} label={(c: any) => c.description} sub={(c: any) => [c.code, ...(c.barcodes ?? []).map((b: any) => b.code)].filter(Boolean).join(' · ')}
+              right={(c: any) => <Text size="sm">{fmtEuro(c.price)}</Text>} onClose={() => setProdList(false)} onPick={(c) => { addProduct(c); setProdList(false) }}
+              newLabel="Nuovo prodotto" renderNew={(initial, back) => <NewItem initial={initial} onCancel={back} onCreated={productCreated} />} />}
             <NumberInput label="Sconto (€)" value={discount} onChange={(v) => setDiscount(Number(v) || 0)} min={0} decimalScale={2} decimalSeparator="," size="md" />
             <Checkbox size="md" label="Vuole la fattura" checked={invoice} onChange={(e) => setInvoice(e.target.checked)} disabled={!appt.party_id} />
           </Stack>

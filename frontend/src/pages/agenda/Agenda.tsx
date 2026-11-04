@@ -10,6 +10,8 @@ import type { AppCtx } from '../app/AppLayout'
 import { type Appointment, CHANNEL, type Service, type Staff, STATUS, dayKey, hhmm, longDay, minutesOf } from './lib'
 import { WhatsAppChat } from './WhatsAppChat'
 import { PayModal, ReceiptButtons } from '../salone/Pay'
+import { LookupButton, LookupModal } from '../../Lookup'
+import { EntitySelect } from '../../EntitySelect'
 
 const PX = 1.5 // pixel per minuto
 
@@ -170,13 +172,19 @@ export function NewAppointment({ day, staff, services, preset, partyId, onClose,
   const [newClient, setNewClient] = useState(false)
   const [nc, setNc] = useState({ first_name: '', last_name: '', mobile: '', marketing: false })
   const [serviceId, setServiceId] = useState<string | null>(null)
+  const [svcRow, setSvcRow] = useState<Service | null>(null)  // servizio scelto (anche appena creato dall'Elenco)
+  const [lookup, setLookup] = useState(false)
+  const pickClient = (c: any) => {
+    setClients((x) => [{ value: c.id, label: `${c.name}${c.mobile ? ' · ' + c.mobile : ''}` }, ...x.filter((y) => y.value !== c.id)])
+    setParty(c.id)
+  }
   const [staffId, setStaffId] = useState<string | null>(preset.staffId ?? null)
   const [slots, setSlots] = useState<{ time: string; staff_ids: string[] }[] | null>(null)
   const [time, setTime] = useState<string | null>(preset.time ?? null)
   const [notes, setNotes] = useState('')
   const [channel, setChannel] = useState('telefono')
   const [busy, setBusy] = useState(false)
-  const svc = services.find((s) => s.id === serviceId)
+  const svc = services.find((s) => s.id === serviceId) ?? (svcRow?.id === serviceId ? svcRow : undefined)
   const eligible = staff.filter((s) => svc?.staff_ids.includes(s.id))
 
   useEffect(() => {
@@ -209,8 +217,11 @@ export function NewAppointment({ day, staff, services, preset, partyId, onClose,
       <Stack>
         {!newClient ? (
           <Group align="flex-end" wrap="nowrap">
-            <Select label="Cliente" placeholder="Cerca per nome o cellulare" searchable data={clients} value={party} onChange={setParty}
-              onSearchChange={setQ} nothingFoundMessage="Nessun cliente" style={{ flex: 1 }} data-testid="client-select" />
+            <Select label="Cliente" placeholder="Cerca per nome o cellulare (F4: elenco)" searchable data={clients} value={party} onChange={setParty}
+              onSearchChange={setQ} nothingFoundMessage="Nessun cliente" style={{ flex: 1 }} data-testid="client-select"
+              onKeyDown={(e) => { if (e.key === 'F4') { e.preventDefault(); setLookup(true) } }} />
+            <LookupButton kind="clienti-salone" onPick={pickClient} />
+            {lookup && <LookupModal kind="clienti-salone" onClose={() => setLookup(false)} onPick={(c) => { setLookup(false); pickClient(c) }} />}
             <Button variant="default" leftSection={<IconUserPlus size={16} />} onClick={() => setNewClient(true)}>Nuovo</Button>
           </Group>
         ) : (
@@ -223,8 +234,8 @@ export function NewAppointment({ day, staff, services, preset, partyId, onClose,
             <Checkbox mt="xs" label="Consenso a ricevere offerte su WhatsApp" checked={nc.marketing} onChange={(e) => setNc({ ...nc, marketing: e.target.checked })} />
           </Paper>
         )}
-        <Select label="Servizio" data={services.filter((s) => s.active).map((s) => ({ value: s.id, label: `${s.name} · ${s.duration_min} min · ${fmtEuro(s.price)}` }))}
-          value={serviceId} onChange={(v) => { setServiceId(v); setTime(null) }} searchable data-testid="service-select" />
+        <EntitySelect kind="servizi" label="Servizio" filter={(s) => s.active} optionLabel={(s) => `${s.name} · ${s.duration_min} min · ${fmtEuro(s.price)}`}
+          value={serviceId} onChange={(v, row) => { setServiceId(v); setSvcRow(row ?? null); setTime(null) }} testId="service-select" />
         {svc && (
           <Group gap="xs">
             <Text size="sm" fw={500}>Operatore</Text>

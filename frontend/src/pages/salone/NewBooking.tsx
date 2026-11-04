@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { appApi, fmtEuro, isoDate } from '../../api'
 import { HeaderAction, notifyError } from '../../components'
 import type { Service, Staff } from '../agenda/lib'
+import { LookupButton, LookupModal } from '../../Lookup'
 
 const choice = { radius: 'lg' as const, p: 'md' as const, withBorder: true }
 
@@ -29,6 +30,8 @@ export default function NewBooking() {
   const [time, setTime] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<any>(null)
+  const [lookup, setLookup] = useState(false)  // F4 sulla ricerca: elenco di tutte le clienti
+  const pickClient = (c: any) => { setLookup(false); setCreating(false); setClient(c); setStep(1) }
 
   useEffect(() => {
     Promise.all([appApi('/api/agenda/servizi'), appApi('/api/agenda/operatori'), appApi('/api/agenda/categorie')])
@@ -94,7 +97,9 @@ export default function NewBooking() {
       {step === 0 && (
         <Stack>
           {!creating ? <>
-            <TextInput size="xl" radius="xl" placeholder="Scrivi il nome o il cellulare" leftSection={<IconSearch />} value={q} onChange={(e) => setQ(e.target.value)} autoFocus data-testid="cerca-cliente" />
+            <TextInput size="xl" radius="xl" placeholder="Scrivi il nome o il cellulare" leftSection={<IconSearch />} value={q} onChange={(e) => setQ(e.target.value)} autoFocus data-testid="cerca-cliente"
+              onKeyDown={(e) => { if (e.key === 'F4') { e.preventDefault(); setLookup(true) } }} />
+            {lookup && <LookupModal kind="clienti-salone" onClose={() => setLookup(false)} onPick={pickClient} />}
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
               {clients.map((c) => (
                 <UnstyledButton key={c.id} onClick={() => { setClient(c); setStep(1) }}>
@@ -102,7 +107,10 @@ export default function NewBooking() {
                 </UnstyledButton>
               ))}
             </SimpleGrid>
-            <Button size="xl" radius="xl" variant="light" leftSection={<IconUserPlus />} onClick={() => setCreating(true)}>È una cliente nuova</Button>
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <LookupButton kind="clienti-salone" label="Tutte le clienti (elenco)" onPick={pickClient} />
+              <Button size="xl" radius="xl" variant="light" leftSection={<IconUserPlus />} onClick={() => setCreating(true)}>È una cliente nuova</Button>
+            </SimpleGrid>
           </> : (
             <Paper {...choice} p="lg">
               <Stack>

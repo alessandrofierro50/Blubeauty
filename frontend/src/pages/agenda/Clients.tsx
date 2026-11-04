@@ -9,6 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { appApi, fmtEuro, isoDate } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { NewAppointment } from './Agenda'
+import { LookupButton } from '../../Lookup'
 import { STATUS, hhmm, longDay } from './lib'
 import { WhatsAppChat } from './WhatsAppChat'
 import { PackageProgress, SellPackage, SellVoucher } from '../salone/Prepaid'
@@ -207,6 +208,7 @@ function LoyaltyBox({ c, reload }: { c: any; reload: () => void }) {
   const [pts, setPts] = useState<number | string>(10)
   const [note, setNote] = useState('')
   const [refOpts, setRefOpts] = useState<any[]>([])
+  const referredBy = async (v: string) => { await appApi(`/api/agenda/clienti/${c.id}`, { method: 'PATCH', body: { referred_by: v } }).catch(notifyError); reload() }
   const card = async () => { try { await appApi(`/api/marketing/fidelity/clienti/${c.id}/tessera`, { body: {} }); notifyOk('Tessera creata'); reload() } catch (e) { notifyError(e) } }
   const save = async () => {
     try { await appApi(`/api/marketing/fidelity/clienti/${c.id}/rettifica`, { body: { points: Number(pts), note } }); setAdjust(false); reload() } catch (e) { notifyError(e) }
@@ -232,9 +234,12 @@ function LoyaltyBox({ c, reload }: { c: any; reload: () => void }) {
         <TextInput label="Motivo" style={{ flex: 1 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Es. punti della vecchia tessera" />
         <Button onClick={save} disabled={!note || !Number(pts)}>Salva</Button>
       </Group>}
-      {!L.referred_by && <Select mt="sm" label="L'ha presentata un'amica? (riceve i punti alla prima visita)" placeholder="Cerca la cliente" searchable clearable
-        data={refOpts} onSearchChange={(q) => q.length > 1 && appApi(`/api/agenda/clienti?limit=10&q=${encodeURIComponent(q)}`).then((r) => setRefOpts(r.filter((x: any) => x.id !== c.id).map((x: any) => ({ value: x.id, label: x.name }))))}
-        onChange={async (v) => { if (v) { await appApi(`/api/agenda/clienti/${c.id}`, { method: 'PATCH', body: { referred_by: v } }).catch(notifyError); reload() } }} />}
+      {!L.referred_by && <Group mt="sm" gap={4} align="flex-end" wrap="nowrap">
+        <Select style={{ flex: 1 }} label="L'ha presentata un'amica? (riceve i punti alla prima visita)" placeholder="Cerca la cliente" searchable clearable
+          data={refOpts} onSearchChange={(q) => q.length > 1 && appApi(`/api/agenda/clienti?limit=10&q=${encodeURIComponent(q)}`).then((r) => setRefOpts(r.filter((x: any) => x.id !== c.id).map((x: any) => ({ value: x.id, label: x.name }))))}
+          onChange={(v) => v && referredBy(v)} />
+        <LookupButton kind="clienti-salone" onPick={(r) => (r.id === c.id ? notifyError(new Error('Scegli un\'altra cliente')) : referredBy(r.id))} />
+      </Group>}
       {L.moves.length > 0 && <Table mt="sm" fz="sm"><Table.Tbody>
         {L.moves.slice(0, 6).map((m: any, i: number) => <Table.Tr key={i}><Table.Td>{new Date(m.created_at).toLocaleDateString('it-IT')}</Table.Td>
           <Table.Td>{REASON[m.reason] ?? m.reason}{m.note ? ` · ${m.note}` : ''}</Table.Td><Table.Td ta="right" c={m.points < 0 ? 'red' : 'green'} fw={700}>{m.points > 0 ? '+' : ''}{m.points}</Table.Td></Table.Tr>)}

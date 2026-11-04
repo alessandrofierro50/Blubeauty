@@ -7,6 +7,8 @@ import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { ApiError, appApi, fmtEuro } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import type { AppCtx } from '../app/AppLayout'
+import { EntitySelect } from '../../EntitySelect'
+import { LookupButton, LookupModal } from '../../Lookup'
 
 const PP = '/api/prepagati'
 const BIG = { size: 'xl', radius: 'lg', h: 64, fz: 18 } as const
@@ -190,13 +192,17 @@ function ClientPicker({ value, onChange, label, placeholder }: { value: any; onC
     const t = setTimeout(() => appApi(`/api/agenda/clienti?q=${encodeURIComponent(q.trim())}`).then((r) => setRows(r.slice(0, 6))).catch(() => {}), 250)
     return () => clearTimeout(t)
   }, [q])
+  const [lookup, setLookup] = useState(false)
+  const pick = (c: any) => { setLookup(false); onChange(c); setQ('') }
   if (value) return (
     <div><Text size="sm" fw={500}>{label}</Text>
       <Group gap="xs"><Badge size="lg" variant="light">{value.name}</Badge><Button size="xs" variant="subtle" onClick={() => onChange(null)}>Cambia</Button></Group></div>
   )
   return (
     <div>
-      <TextInput size="md" label={label} placeholder={placeholder ?? 'Scrivi nome o telefono'} value={q} onChange={(e) => setQ(e.currentTarget.value)} leftSection={<IconSearch size={16} />} />
+      <TextInput size="md" label={label} placeholder={placeholder ?? 'Scrivi nome o telefono'} value={q} onChange={(e) => setQ(e.currentTarget.value)} leftSection={<IconSearch size={16} />}
+        onKeyDown={(e) => { if (e.key === 'F4') { e.preventDefault(); setLookup(true) } }} rightSection={<LookupButton kind="clienti-salone" size={30} onPick={pick} />} rightSectionWidth={40} />
+      {lookup && <LookupModal kind="clienti-salone" onClose={() => setLookup(false)} onPick={pick} />}
       {rows.length > 0 && <Paper withBorder mt={4}>{rows.map((c) => (
         <Button key={c.id} fullWidth variant="subtle" justify="flex-start" onClick={() => { onChange(c); setQ('') }}>{c.name}{c.mobile ? ` · ${c.mobile}` : ''}</Button>
       ))}</Paper>}
@@ -260,7 +266,8 @@ export function SellVoucher({ onClose, onDone, purchaser, registerId }: { onClos
               <NumberInput size="md" w={140} label="Altro importo" value={amount} onChange={(v) => setAmount(v === '' ? '' : Number(v))} min={1} max={5000} decimalScale={2} decimalSeparator="," suffix=" €" />
             </Group>
           ) : (
-            <Select size="md" label="Servizio regalato" searchable data={services.map((s) => ({ value: s.id, label: `${s.name} · ${fmtEuro(s.price)}` }))} value={serviceId} onChange={setServiceId} />
+            <EntitySelect kind="servizi" size="md" label="Servizio regalato" filter={(s) => s.active} optionLabel={(s) => `${s.name} · ${fmtEuro(s.price)}`} value={serviceId}
+              onChange={(v, row) => { if (row && !services.some((x) => x.id === row.id)) setServices((x) => [...x, row]); setServiceId(v) }} />
           )}
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             {forClient ? <ClientPicker label="Per chi è" value={forClient} onChange={setForClient} />
@@ -421,8 +428,8 @@ function PackageEditor({ p, onClose, onSaved }: { p: any; onClose: () => void; o
         <Text size="sm" fw={500}>Servizi e sedute</Text>
         {f.items.map((it: any, i: number) => (
           <Group key={i} align="flex-end" wrap="nowrap">
-            <Select style={{ flex: 1 }} searchable placeholder="Servizio" data={services.map((s) => ({ value: s.id, label: `${s.name} · ${fmtEuro(s.price)}` }))}
-              value={it.service_id} onChange={(v) => setF({ ...f, items: f.items.map((x: any, j: number) => (j === i ? { ...x, service_id: v } : x)) })} />
+            <EntitySelect kind="servizi" w="100%" placeholder="Servizio" filter={(s) => s.active} optionLabel={(s) => `${s.name} · ${fmtEuro(s.price)}`} value={it.service_id}
+              onChange={(v, row) => { if (row && !services.some((x) => x.id === row.id)) setServices((x) => [...x, row]); setF({ ...f, items: f.items.map((x: any, j: number) => (j === i ? { ...x, service_id: v } : x)) }) }} />
             <NumberInput w={110} label={i === 0 ? 'Sedute' : undefined} min={1} max={100} value={it.sessions}
               onChange={(v) => setF({ ...f, items: f.items.map((x: any, j: number) => (j === i ? { ...x, sessions: Number(v) || 1 } : x)) })} />
             {f.items.length > 1 && <ActionIcon variant="subtle" color="red" mb={6} onClick={() => setF({ ...f, items: f.items.filter((_: any, j: number) => j !== i) })}><IconTrash size={16} /></ActionIcon>}

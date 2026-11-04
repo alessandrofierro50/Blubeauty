@@ -11,6 +11,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { appApi } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { P } from './shared'
+import { TableSelect } from '../anagrafiche/TableSelect'
+import { EntitySelect } from '../../EntitySelect'
 
 const COLORS = ['blue', 'teal', 'green', 'lime', 'yellow', 'orange', 'red', 'pink', 'grape', 'violet', 'indigo', 'cyan', 'gray']
 
@@ -111,14 +113,14 @@ function RegisterEditor({ reg, onClose, onSaved }: { reg: any; onClose: () => vo
         <TextInput label="Nome" required value={r.name} onChange={(e) => set('name', e.currentTarget.value)} placeholder="es. Cassa 1" />
         <Select label="Punto vendita" data={L.stores.map((s: any) => ({ value: s.id, label: s.name }))} value={r.store_id} clearable
           onChange={(v) => { const st = L.stores.find((s: any) => s.id === v); setR({ ...r, store_id: v, warehouse_id: st?.warehouse_id ?? r.warehouse_id }) }} />
-        <Select label="Magazzino da scaricare" required data={L.whs.map((w: any) => ({ value: w.id, label: w.name }))} value={r.warehouse_id} onChange={(v) => set('warehouse_id', v)} allowDeselect={false} />
-        <Select label="Listino" description="Vuoto: il listino predefinito" data={L.lists.map((p: any) => ({ value: p.id, label: `${p.name}${p.vat_included ? ' (IVA incl.)' : ''}` }))} value={r.price_list_id} onChange={(v) => set('price_list_id', v)} clearable />
+        <EntitySelect kind="magazzini" label="Magazzino da scaricare" required value={r.warehouse_id} onChange={(v) => v && set('warehouse_id', v)} />
+        <TableSelect kind="listini" label="Listino" description="Vuoto: il listino predefinito" value={r.price_list_id} onChange={(v) => set('price_list_id', v)} clearable />
         <div>
           <Text size="sm" fw={500} mb={4}>Modalità</Text>
           <SegmentedControl fullWidth value={r.mode} onChange={(v) => set('mode', v)} data={[{ value: 'negozio', label: 'Negozio (touch)' }, { value: 'supermercato', label: 'Supermercato' }]} />
         </div>
-        <Select label="Conto per i contanti" description="Vuoto: la cassa predefinita" data={accOpts(['cassa'])} value={r.cash_account_id} onChange={(v) => set('cash_account_id', v)} clearable />
-        <Select label="Conto per carte e POS" description="Vuoto: la banca predefinita" data={accOpts(['banca', 'carta', 'altro'])} value={r.card_account_id} onChange={(v) => set('card_account_id', v)} clearable />
+        <EntitySelect kind="conti" label="Conto per i contanti" description="Vuoto: la cassa predefinita" filter={(a) => a.active && a.kind === 'cassa'} newDefaults={{ kind: 'cassa' }} value={r.cash_account_id} onChange={(v) => set('cash_account_id', v)} clearable />
+        <EntitySelect kind="conti" label="Conto per carte e POS" description="Vuoto: la banca predefinita" filter={(a) => a.active && a.kind !== 'cassa'} newDefaults={{ kind: 'banca' }} value={r.card_account_id} onChange={(v) => set('card_account_id', v)} clearable />
         <Stack gap={6} mt="lg">
           <Switch label="Stampa la ricevuta di cortesia a ogni vendita" checked={!!r.settings.auto_print} onChange={(e) => set('settings', { ...r.settings, auto_print: e.currentTarget.checked })} />
           <Switch label="Consenti la ricevuta non fiscale al posto dello scontrino" checked={r.settings.nonfiscal_allowed !== false}

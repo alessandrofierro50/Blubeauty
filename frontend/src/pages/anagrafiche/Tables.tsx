@@ -14,7 +14,7 @@ const METHODS = [
 ]
 const NATURES = ['N1', 'N2.1', 'N2.2', 'N3.1', 'N3.2', 'N3.3', 'N3.4', 'N3.5', 'N3.6', 'N4', 'N5', 'N6.1', 'N6.2', 'N6.3', 'N6.4', 'N6.5', 'N6.6', 'N6.7', 'N6.8', 'N6.9', 'N7']
 
-const DEFS: Record<string, { title: string; cols: Col[] }> = {
+export const DEFS: Record<string, { title: string; cols: Col[] }> = {
   'aliquote-iva': { title: 'Aliquote IVA', cols: [
     { key: 'code', label: 'Codice', width: 90 }, { key: 'description', label: 'Descrizione' }, { key: 'rate', label: 'Aliquota %', type: 'number', width: 100 },
     { key: 'nature', label: 'Natura', type: 'select', options: NATURES.map((n) => ({ value: n, label: n })), width: 100 },
@@ -151,18 +151,7 @@ function TableEditor({ kind }: { kind: string }) {
       <Modal opened={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Modifica' : 'Nuovo'}>
         {edit && (
           <Stack>
-            <SimpleGrid cols={1}>
-              {def.cols.map((c) => {
-                const v = edit[c.key]
-                const on = (x: any) => setEdit({ ...edit, [c.key]: x })
-                if (c.type === 'bool') return <Checkbox key={c.key} label={c.label} checked={!!v} onChange={(e) => on(e.currentTarget.checked)} />
-                if (c.type === 'number') return <NumberInput key={c.key} label={c.label} value={v === null ? '' : v} onChange={on} decimalScale={2} />
-                if (c.type === 'tags') return <TagsInput key={c.key} label={c.label} value={v ?? []} onChange={on} />
-                if (c.type === 'installments') return <TextInput key={c.key} label={c.label} description="Giorni separati da trattino, es. 30-60-90 (rate uguali)" value={v ?? ''} onChange={(e) => on(e.currentTarget.value)} />
-                if (c.type === 'select') return <Select key={c.key} label={c.label} data={c.key === 'parent_id' ? parentOpts.filter((o) => o.value !== edit.id) : c.options ?? []} value={v || null} onChange={on} clearable />
-                return <TextInput key={c.key} label={c.label} value={v ?? ''} onChange={(e) => on(e.currentTarget.value)} />
-              })}
-            </SimpleGrid>
+            <TableFields kind={kind} edit={edit} setEdit={setEdit} parentOpts={parentOpts} />
             <Group justify="flex-end"><Button variant="default" onClick={() => setEdit(null)}>Annulla</Button><Button onClick={save}>Salva</Button></Group>
           </Stack>
         )}
@@ -175,9 +164,30 @@ function formatInstallments(list: any[]) {
   return list.map((x) => x.days).join('-')
 }
 
-function parseInstallments(text: string) {
+export function parseInstallments(text: string) {
   const days = text.split(/[-,;\s]+/).filter(Boolean).map(Number).filter((n) => !isNaN(n))
   if (!days.length) return [{ days: 0, percent: 100 }]
   const base = Math.floor((100 / days.length) * 100) / 100
   return days.map((d, i) => ({ days: d, percent: i === days.length - 1 ? Math.round((100 - base * (days.length - 1)) * 100) / 100 : base }))
 }
+
+/** Campi di una riga di tabella (pagina Tabelle e «Nuovo» dalle finestre Elenco). */
+export function TableFields({ kind, edit, setEdit, parentOpts = [] }: { kind: string; edit: any; setEdit: (v: any) => void; parentOpts?: { value: string; label: string }[] }) {
+  const def = DEFS[kind]
+  return (
+    <SimpleGrid cols={1}>
+      {def.cols.map((c, i) => {
+        const v = edit[c.key]
+        const on = (x: any) => setEdit({ ...edit, [c.key]: x })
+        if (c.type === 'bool') return <Checkbox key={c.key} label={c.label} checked={!!v} onChange={(e) => on(e.currentTarget.checked)} />
+        if (c.type === 'number') return <NumberInput key={c.key} label={c.label} value={v === null ? '' : v} onChange={on} decimalScale={2} />
+        if (c.type === 'tags') return <TagsInput key={c.key} label={c.label} value={v ?? []} onChange={on} />
+        if (c.type === 'installments') return <TextInput key={c.key} label={c.label} description="Giorni separati da trattino, es. 30-60-90 (rate uguali); 0 = a vista" value={v ?? ''} onChange={(e) => on(e.currentTarget.value)} />
+        if (c.type === 'select') return <Select key={c.key} label={c.label} data={c.key === 'parent_id' ? parentOpts.filter((o) => o.value !== edit.id) : c.options ?? []} value={v || null} onChange={on} clearable />
+        return <TextInput key={c.key} label={c.label} value={v ?? ''} autoFocus={i === 0} onChange={(e) => on(e.currentTarget.value)} />
+      })}
+    </SimpleGrid>
+  )
+}
+
+export const blankRow = (kind: string) => Object.fromEntries(DEFS[kind].cols.map((c) => [c.key, c.type === 'bool' ? (c.key === 'active') : c.type === 'tags' ? [] : c.type === 'installments' ? '30' : '']))

@@ -7,6 +7,7 @@ import { fmtDate, fmtEuro, isoDate } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { dec, num, useLookups } from '../anagrafiche/shared'
 import { CustomerPicker, S, StatusBadge } from './shared'
+import { TableSelect } from '../anagrafiche/TableSelect'
 
 const FREQ = [{ value: '1', label: 'Mensile' }, { value: '2', label: 'Bimestrale' }, { value: '3', label: 'Trimestrale' }, { value: '4', label: 'Quadrimestrale' }, { value: '6', label: 'Semestrale' }, { value: '12', label: 'Annuale' }]
 
@@ -116,7 +117,7 @@ function ContractModal({ c: initial, onClose, onSaved }: { c: any; onClose: () =
           <TextInput type="date" label="Inizio contratto" value={c.start_date} onChange={(e) => set('start_date', e.currentTarget.value)} />
           <TextInput type="date" label="Fine contratto (vuoto = a tempo indeterminato)" value={c.end_date ?? ''} onChange={(e) => set('end_date', e.currentTarget.value)} />
           {c.id && <TextInput type="date" label="Prossima fattura" value={c.next_invoice_date} onChange={(e) => set('next_invoice_date', e.currentTarget.value)} />}
-          <Select label="Pagamento" data={L.payments.map((p) => ({ value: p.id, label: p.description }))} value={c.payment_term_id} onChange={(v) => set('payment_term_id', v)} clearable placeholder="quello del cliente" />
+          <TableSelect kind="pagamenti" label="Pagamento" value={c.payment_term_id} onChange={(v) => set('payment_term_id', v)} clearable placeholder="quello del cliente" />
         </SimpleGrid>
         <Paper withBorder>
           <Table>
@@ -128,7 +129,7 @@ function ContractModal({ c: initial, onClose, onSaved }: { c: any; onClose: () =
                   <Table.Td><NumberInput size="xs" hideControls value={num(l.quantity)} onChange={(v) => updLine(i, 'quantity', v)} min={0} /></Table.Td>
                   <Table.Td><NumberInput size="xs" hideControls value={num(l.unit_price)} onChange={(v) => updLine(i, 'unit_price', v)} min={0} decimalScale={2} prefix="€ " /></Table.Td>
                   <Table.Td><NumberInput size="xs" hideControls value={num(l.discount1)} onChange={(v) => updLine(i, 'discount1', v)} min={0} max={100} /></Table.Td>
-                  <Table.Td><Select size="xs" data={L.vat.filter((v) => v.active).map((v) => ({ value: v.id, label: v.code }))} value={l.vat_rate_id ?? vat22} onChange={(v) => updLine(i, 'vat_rate_id', v)} /></Table.Td>
+                  <Table.Td><TableSelect kind="aliquote-iva" size="xs" short filter={(v) => v.active} value={l.vat_rate_id ?? vat22} onChange={(v) => updLine(i, 'vat_rate_id', v)} /></Table.Td>
                   <Table.Td><ActionIcon variant="subtle" color="red" disabled={c.lines.length === 1} onClick={() => set('lines', c.lines.filter((_: any, j: number) => j !== i))}><IconTrash size={16} /></ActionIcon></Table.Td>
                 </Table.Tr>
               ))}

@@ -350,13 +350,21 @@ def client_row(p: Party, prof: ClientProfile | None) -> dict:
 
 
 @router.get("/clienti")
-def list_clients(q: str | None = None, limit: int = Query(100, le=500), ctx: TenantContext = Depends(reader)):
+def list_clients(q: str | None = None, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+                 totale: bool = False, ctx: TenantContext = Depends(reader)):
+    """Clienti in ordine alfabetico. Ricerca su nome, cellulare, telefono, email, città, partita IVA e codice fiscale.
+    Con `totale=true` risponde {total, rows} (finestra «Elenco», che scorre a pagine con `offset`)."""
     stmt = (select(Party, ClientProfile).outerjoin(ClientProfile, ClientProfile.party_id == Party.id)
-            .where(Party.is_customer.is_(True), Party.active.is_(True)).order_by(Party.name).limit(limit))
+            .where(Party.is_customer.is_(True), Party.active.is_(True)))
     if q and q.strip():
         t = f"%{q.strip()}%"
-        stmt = stmt.where(or_(Party.name.ilike(t), Party.mobile.ilike(t), Party.phone.ilike(t), Party.email.ilike(t)))
-    return [client_row(p, prof) for p, prof in ctx.db.execute(stmt).all()]
+        stmt = stmt.where(or_(Party.name.ilike(t), Party.mobile.ilike(t), Party.phone.ilike(t), Party.email.ilike(t),
+                              Party.city.ilike(t), Party.vat_number.ilike(t), Party.tax_code.ilike(t)))
+    rows = [client_row(p, prof) for p, prof in ctx.db.execute(stmt.order_by(Party.name, Party.id).offset(offset).limit(limit)).all()]
+    if not totale:
+        return rows
+    total = ctx.db.scalar(select(func.count()).select_from(stmt.with_only_columns(Party.id).subquery()))
+    return {"total": total, "rows": rows}
 
 
 @router.post("/clienti", status_code=201)

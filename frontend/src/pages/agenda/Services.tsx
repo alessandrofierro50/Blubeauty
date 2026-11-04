@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { appApi, fmtEuro, isoDate } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { HoursEditor } from './AgendaSettings'
+import { TableSelect } from '../anagrafiche/TableSelect'
 import type { Service, Staff } from './lib'
 
 export default function Services() {
@@ -113,7 +114,7 @@ function ServiceModal({ s, staff, resources, cats, vats, onClose, onSaved }: { s
           <TextInput label="Nome" value={f.name ?? ''} onChange={(e) => setF({ ...f, name: e.target.value })} />
           <Select label="Categoria" data={cats.map((c) => ({ value: c.id, label: c.name }))} value={f.category_id ?? null} onChange={(v) => setF({ ...f, category_id: v })} clearable />
           <NumberInput label="Prezzo IVA inclusa (€)" value={f.price} onChange={(v) => setF({ ...f, price: v })} min={0} decimalScale={2} decimalSeparator="," />
-          <Select label="Aliquota IVA" data={vats.map((v: any) => ({ value: v.id, label: v.description ?? v.code }))} value={f.vat_rate_id ?? null} onChange={(v) => setF({ ...f, vat_rate_id: v })} clearable placeholder="Predefinita (22%)" />
+          <TableSelect kind="aliquote-iva" label="Aliquota IVA" filter={(v) => v.active || v.id === f.vat_rate_id} value={f.vat_rate_id ?? null} onChange={(v) => setF({ ...f, vat_rate_id: v })} clearable placeholder="Predefinita (22%)" />
           <NumberInput label="Durata (minuti)" value={f.duration_min} onChange={(v) => setF({ ...f, duration_min: Number(v) })} min={5} step={5} />
           <NumberInput label="Richiamo dopo (giorni)" description="Es. ritocco colore: 35" value={f.recall_days ?? ''} onChange={(v) => setF({ ...f, recall_days: v === '' ? null : Number(v) })} min={1} />
         </SimpleGrid>

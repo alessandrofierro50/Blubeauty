@@ -5,7 +5,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { appApi } from '../../api'
 import { Loading, notifyError, notifyOk } from '../../components'
+import { LookupButton, LookupModal } from '../../Lookup'
 import { VariantGrid, W, useWarehouses } from './shared'
+import { EntitySelect } from '../../EntitySelect'
 
 type Line = {
   key: string
@@ -32,31 +34,43 @@ export function ItemScanner({ onPick, autoFocus = true, all = false }: { onPick:
   const [results, setResults] = useState<any[]>([])
   const ref = useRef<HTMLInputElement>(null)
   const typed = useRef(0)
-  const lookup = (c: string) => W('/cerca?code=' + encodeURIComponent(c) + (all ? '&tutti=true' : ''))
+  const lookup_ = (c: string) => W('/cerca?code=' + encodeURIComponent(c) + (all ? '&tutti=true' : ''))
   // suggerimenti mentre si scrive (dalla terza lettera); Invio o lo scanner aggiungono subito se il risultato è uno solo
   useEffect(() => {
     const c = code.trim()
     if (c.length < 3) { setResults([]); return }
     const n = ++typed.current
-    const h = setTimeout(() => lookup(c).then((r) => { if (n === typed.current) setResults(r) }).catch(() => {}), 300)
+    const h = setTimeout(() => lookup_(c).then((r) => { if (n === typed.current) setResults(r) }).catch(() => {}), 300)
     return () => clearTimeout(h)
   }, [code])
   function pick(r: any) { onPick(r); setResults([]); setCode(''); typed.current++; ref.current?.focus() }
+  // dall'elenco: si rilegge l'articolo con la stessa ricerca dello scanner, così arriva nello stesso formato
+  const [lookup, setLookup] = useState(false)
+  async function fromList(row: any) {
+    try {
+      const r = await lookup_(row.code)
+      pick(r.find((x: any) => x.id === row.id && !x.variant_id) ?? r.find((x: any) => x.id === row.id) ?? r[0] ?? row)
+    } catch (e) { notifyError(e) }
+  }
   async function search() {
     const c = code.trim()
     if (!c) return
     try {
       typed.current++
-      const r = await lookup(c)
+      const r = await lookup_(c)
       if (r.length === 1) pick(r[0]); else if (!r.length) notifyError(new Error(`Nessun articolo trovato per «${c}»: controlla che esista in Anagrafiche › Articoli e che sia attivo`)); else setResults(r)
     } catch (e) { notifyError(e) }
     ref.current?.focus()
   }
   return (
     <div>
-      <TextInput ref={ref} placeholder="Scrivi codice o descrizione dell'articolo (o leggi il codice a barre) e scegli dall'elenco" leftSection={<IconBarcode size={18} />}
+      <TextInput ref={ref} placeholder="Scrivi codice o descrizione dell'articolo (o leggi il codice a barre) e scegli dall'elenco"
+        onKeyUp={(e) => { if (e.key === 'F4') { e.preventDefault(); setLookup(true) } }} leftSection={<IconBarcode size={18} />}
         value={code} onChange={(e) => setCode(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search() } }}
-        size="md" autoFocus={autoFocus} rightSection={<ActionIcon variant="filled" onClick={search} aria-label="Aggiungi"><IconPlus size={16} /></ActionIcon>} />
+        size="md" autoFocus={autoFocus} rightSectionWidth={74}
+        rightSection={<Group gap={4} wrap="nowrap"><LookupButton kind="articoli" size={30} onPick={fromList} />
+          <ActionIcon variant="filled" size={30} onClick={search} aria-label="Aggiungi"><IconPlus size={16} /></ActionIcon></Group>} />
+      {lookup && <LookupModal kind="articoli" onClose={() => setLookup(false)} onPick={(r) => { setLookup(false); fromList(r) }} />}
       {results.length > 0 && (
         <Paper withBorder mt={4} p={4} shadow="sm">
           {results.map((r) => (
@@ -146,8 +160,8 @@ export default function Operation({ transfer = false }: { transfer?: boolean }) 
       <Paper withBorder p="md" mb="md">
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
           {!transfer && <div><Text size="sm" fw={500} mb={4}>Operazione</Text><SegmentedControl fullWidth value={kind} onChange={setKind} data={KINDS} size="xs" /></div>}
-          <Select label={transfer ? 'Da magazzino' : 'Magazzino'} data={whOpts} value={wh} onChange={setWh} allowDeselect={false} />
-          {transfer && <Select label="A magazzino" data={whOpts.filter((o) => o.value !== wh)} value={toWh} onChange={setToWh} placeholder="Scegli" />}
+          <EntitySelect kind="magazzini" label={transfer ? 'Da magazzino' : 'Magazzino'} value={wh} onChange={(v) => v && setWh(v)} />
+          {transfer && <EntitySelect kind="magazzini" label="A magazzino" filter={(w) => w.id !== wh} value={toWh} onChange={setToWh} placeholder="Scegli" />}
           <TextInput type="date" label="Data" description="vuota = oggi" value={when} onChange={(e) => setWhen(e.currentTarget.value)} />
           <TextInput label="Riferimento / note" placeholder="es. DDT 123 del fornitore" value={reference} onChange={(e) => setReference(e.currentTarget.value)} />
         </SimpleGrid>
