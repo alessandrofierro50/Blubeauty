@@ -4,7 +4,7 @@ import {
   ActionIcon, Alert, Badge, Button, Code, CopyButton, Group, JsonInput, Modal, NumberInput, Paper, Select, SimpleGrid, Stack, Switch, Table, Tabs,
   Text, TextInput, Tooltip,
 } from '@mantine/core'
-import { IconCopy, IconDeviceDesktop, IconDownload, IconPencil, IconPlayerPlay, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
+import { IconCopy, IconDeviceDesktop, IconDownload, IconExternalLink, IconPencil, IconPlayerPlay, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -12,10 +12,14 @@ import { tokens } from '../../api'
 import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
 import { PER } from './LabelView'
 
-const KIND_COLOR: Record<string, string> = { rt: 'grape', stampante: 'blue', etichette: 'teal', bilancia: 'orange' }
+const KIND_COLOR: Record<string, string> = { rt: 'grape', stampante: 'blue', etichette: 'teal', bilancia: 'orange', cassa_auto: 'green' }
 const STATUS_COLOR: Record<string, string> = { in_coda: 'yellow', inviato: 'blue', eseguito: 'green', errore: 'red', annullato: 'gray' }
 const KIND_JOB: Record<string, string> = { 'rt.receipt': 'Documento commerciale', 'rt.refund': 'Reso / annullo', 'rt.z': 'Chiusura giornaliera Z',
-  'rt.x': 'Lettura X', 'print.text': 'Ricevuta', 'print.zpl': 'Etichette', 'scale.read': 'Lettura bilancia', status: 'Prova' }
+  'rt.x': 'Lettura X', 'print.text': 'Ricevuta', 'print.zpl': 'Etichette', 'scale.read': 'Lettura bilancia', status: 'Prova',
+  'cash.payment': 'Pagamento con la cassa automatica', 'cash.admin': 'Gestione della cassa automatica' }
+
+/** WebTool della cassa automatica VNE (prelievi, ricariche, chiusure, configurazione): https://IP/tool/ */
+export const webtoolUrl = (address?: string | null) => (address ? `https://${address.trim().split(':')[0]}/tool/` : null)
 
 export function downloadAgent() {
   fetch('/api/periferiche/agent/scarica', { headers: { Authorization: `Bearer ${tokens.get('user')}` } })
@@ -57,7 +61,7 @@ function AgentsAndDevices() {
     setTesting(d.id)
     try {
       const r = await PER(`/dispositivi/${d.id}/prova`, { method: 'POST' })
-      if (r.ok) notifyOk(d.kind === 'bilancia' ? `Peso letto: ${Number(r.result.weight).toLocaleString('it-IT')} kg` : d.kind === 'rt' ? `Il registratore risponde${r.result?.model ? ` (${r.result.model})` : ''}${r.result?.vat_table?.length ? ` · aliquote IVA: ${r.result.vat_table.map((x: any) => `${x.index}=${x.rate}%`).join(', ')}` : ''}${r.result?.problems?.length ? ` · attenzione: ${r.result.problems.join(', ')}` : ''}` : 'Stampa di prova inviata')
+      if (r.ok) notifyOk(d.kind === 'cassa_auto' ? `La cassa automatica risponde${r.result?.model ? ` (${r.result.model})` : ''}${r.result?.problems?.length ? ` · attenzione: ${r.result.problems.join(', ')}` : ''}` : d.kind === 'bilancia' ? `Peso letto: ${Number(r.result.weight).toLocaleString('it-IT')} kg` : d.kind === 'rt' ? `Il registratore risponde${r.result?.model ? ` (${r.result.model})` : ''}${r.result?.vat_table?.length ? ` · aliquote IVA: ${r.result.vat_table.map((x: any) => `${x.index}=${x.rate}%`).join(', ')}` : ''}${r.result?.problems?.length ? ` · attenzione: ${r.result.problems.join(', ')}` : ''}` : 'Stampa di prova inviata')
       else notifyError(new Error(r.error || 'Prova non riuscita'))
     } catch (e) { notifyError(e) } finally { setTesting(null) }
   }
@@ -98,8 +102,10 @@ function AgentsAndDevices() {
                   <Table.Td w={190}><Badge variant="light" color={KIND_COLOR[d.kind]}>{d.kind_label}</Badge></Table.Td>
                   <Table.Td fw={500}>{d.name}</Table.Td>
                   <Table.Td><Text size="sm">{d.driver_label}</Text><Text size="xs" c="dimmed">{d.address}</Text></Table.Td>
-                  <Table.Td ta="right" w={150}>
+                  <Table.Td ta="right" w={240}>
                     <Group gap={4} justify="flex-end" wrap="nowrap">
+                      {d.driver === 'vne_cash' && d.address && <Button size="xs" variant="subtle" component="a" href={webtoolUrl(d.address)!} target="_blank" rel="noreferrer"
+                        leftSection={<IconExternalLink size={14} />}>WebTool</Button>}
                       <Button size="xs" variant="subtle" leftSection={<IconPlayerPlay size={14} />} loading={testing === d.id} onClick={() => test(d)}>Prova</Button>
                       <ActionIcon variant="subtle" onClick={() => setEdit(d)}><IconPencil size={16} /></ActionIcon>
                     </Group>
@@ -222,6 +228,33 @@ function DeviceEditor({ d, agents, drivers, onClose, onSaved }: { d: any; agents
             <TextInput label="Formato del peso (espressione regolare)" value={v.options.regex ?? ''} onChange={(e) => opt('regex', e.currentTarget.value)} />
             <Switch mt="lg" label="La bilancia comunica in grammi" checked={!!v.options.grams} onChange={(e) => opt('grams', e.currentTarget.checked)} />
           </SimpleGrid>
+        )}
+        {v.driver === 'vne_cash' && (
+          <>
+            <SimpleGrid cols={3}>
+              <NumberInput label="Porta" value={v.options.port ?? 443} min={1} max={65535} onChange={(x) => opt('port', Number(x) || 443)} />
+              <Select label="Protocollo" allowDeselect={false} value={v.options.scheme ?? 'https'} onChange={(x) => opt('scheme', x || 'https')}
+                data={[{ value: 'https', label: 'https (macchina vera)' }, { value: 'http', label: 'http (simulatore)' }]} />
+              <NumberInput label="Attesa massima (secondi)" description="Poi la cassa annulla e restituisce" value={v.options.max_wait ?? 600} min={30} max={3600}
+                onChange={(x) => opt('max_wait', Number(x) || 600)} />
+            </SimpleGrid>
+            <SimpleGrid cols={2}>
+              <TextInput label="Operatore della cassa (facoltativo)" description="Utente della macchina: accesso automatico ai pagamenti"
+                value={v.options.op_name ?? ''} onChange={(e) => opt('op_name', e.currentTarget.value)} />
+              <TextInput label="Chiave authKey (facoltativa)" type="password" autoComplete="new-password"
+                description={v.options.auth_key_set ? 'Impostata: lascia vuoto per non cambiarla' : 'Solo nelle installazioni in cui VNE la richiede'}
+                value={v.options.auth_key ?? ''} onChange={(e) => opt('auth_key', e.currentTarget.value)} />
+            </SimpleGrid>
+            {v.options.auth_key_set && <Switch label="Togli la chiave authKey" checked={!!v.options.auth_key_clear} onChange={(e) => opt('auth_key_clear', e.currentTarget.checked)} />}
+            <Switch label="Verifica il certificato della macchina" description="Di solito no: la cassa usa un certificato autofirmato nella rete del negozio"
+              checked={!!v.options.verify_tls} onChange={(e) => opt('verify_tls', e.currentTarget.checked)} />
+            {v.address && <Group><Button variant="light" component="a" href={webtoolUrl(v.address)!} target="_blank" rel="noreferrer" leftSection={<IconExternalLink size={16} />}>
+              WebTool della cassa</Button><Text size="xs" c="dimmed">Prelievi, ricariche, chiusure e configurazione dalla pagina della macchina (stessi utenti della cassa).</Text></Group>}
+          </>
+        )}
+        {v.driver === 'simulatore_vne' && (
+          <NumberInput label="Il «cliente» paga da solo dopo (secondi)" description="Simulatore senza denaro: inserisce la prima banconota che copre l'importo"
+            value={v.options.auto_pay ?? 3} min={0} max={120} onChange={(x) => opt('auto_pay', Number(x))} />
         )}
         {v.driver === 'simulatore_bilancia' && <TextInput label="Peso fisso (kg)" description="Vuoto: un peso a caso" value={v.options.weight ?? ''} onChange={(e) => opt('weight', e.currentTarget.value)} />}
         <Switch label="Attivo" checked={v.active} onChange={(e) => set('active', e.currentTarget.checked)} />

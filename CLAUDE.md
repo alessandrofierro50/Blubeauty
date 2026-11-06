@@ -146,6 +146,24 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 - [x] 2026-10-31 — fork di BluGest, pacchetti AGENDA/SALONE, moduli agenda e marketing (migrazione 0024, RLS), prenotazione
       online pubblica, incasso con registratore/fattura, interfaccia, logo e palette BluCode, demo, test (`test_agenda.py`).
 - [x] 2026-10-31 — raccolta punti e tessere, ricevuta non fiscale (termica 80 mm / registratore), modalità semplice.
+- [x] 2026-11-06 — **Cassa automatica VNE** (protocollo Automatic Cash 3.06; procedura comune `comune/cassa-automatica-vne.md` del
+      repository di progetto; modulo COMUNE `agent/vne_cash.py` identico a `strumenti/vne/vne_cash.py`, mai modificato qui):
+      dispositivo `cassa_auto` (driver `vne_cash`: IP, porta 443, https senza verifica del certificato salvo `verify_tls`,
+      `op_name`, `max_wait` 600 s, `auth_key` che va solo all'agent e non torna mai al browser (`per.public_options`/`merge_options`);
+      `simulatore_vne` per le prove), ruolo `cash` nelle periferiche della cassa. Agent 1.1.0: `CashMachine` (pagamento in un
+      thread con `run_payment`, avanzamenti `POST /api/agent/lavori/{id}/avanzamento` al più 1/s con risposta `cancel` 0/1/2,
+      errore prima dell'id = `result.sent: false`; gestione `cash.admin`). Server `app/pos/cassa_automatica.py` + tabella
+      `pos_cash_machine_payments` (migrazione `0029_cassa_automatica`, RLS): `POST /api/pos/casse/{id}/cassa-automatica/pagamenti`
+      (stessa vendita di /vendite, `payments` = le altre parti; totale dal server con `pos.check_sale`) → lavoro `cash.payment`;
+      la vendita nasce SOLO all'esito (`periferiche.complete` → `on_job_result` → `pos.create_sale`): completed = contanti con
+      ricevuto = inserito e resto = erogato (`inserted = -2` → carta), returned/deleted → resta da incassare, partial o senza
+      riscontro → «da_verificare» con `/risolvi` (pagato, con metodo della differenza se parziale, o non pagato), lavoro non preso
+      entro 45 s → non eseguito. Gestione: `POST /casse/{id}/cassa-automatica/{stato|carico|prelievo|svuota|apri|azzera}`
+      (stato e carico chi incassa, il resto l'amministrazione; mai insieme a un pagamento), `/cassa-automatica/lavori/{id}` e `/stop`.
+      UI: `pages/pos/CashMachine.tsx` (`CashWait`, `CashVerify`, `CashPanel`), in cassa «Cassa automatica» nella finestra d'incasso
+      e «Gestione cassa automatica» in alto; Computer e periferiche: campi del dispositivo e «WebTool» (https://IP/tool/).
+      Test `tests/test_cassa_automatica.py`, agent `test_agent.py -k vne`. DA FARE: prova sulla macchina vera (o AC_SIM),
+      incasso con la cassa automatica anche dall'appuntamento (`Pay.tsx`, oggi solo dalla cassa al banco).
 - [ ] Prezzi definitivi dei pacchetti (decisione del titolare) e pagina del sito (`content.py`).
 - [ ] WhatsApp Business: numero del salone, modelli approvati da Meta per promemoria/marketing (`docs/WHATSAPP.md`).
 - [ ] Collaudo con registratore telematico vero (Epson/Custom) e stampante termica in un salone pilota.

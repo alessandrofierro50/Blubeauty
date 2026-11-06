@@ -171,7 +171,7 @@ def _save_reg(ctx, r: PosRegister, body: RegisterIn):
         if k.get("type") in ("item", "department") and k.get("id"):
             keys.append({"type": k["type"], "id": str(k["id"]), "label": (k.get("label") or "")[:30], "color": k.get("color")})
     devices = {}
-    for role, kind in (("rt", "rt"), ("printer", "stampante"), ("scale", "bilancia")):
+    for role, kind in (("rt", "rt"), ("printer", "stampante"), ("scale", "bilancia"), ("cash", "cassa_auto")):
         dev_id = (body.devices or {}).get(role)
         if dev_id:
             from app.periferiche.models import Device
@@ -320,6 +320,11 @@ class CloseIn(BaseModel):
 
 @router.post("/aperture/{ses_id}/chiudi")
 def close_register(ses_id: uuid.UUID, body: CloseIn, ctx: TenantContext = Depends(cashier)):
+    from app.pos import cassa_automatica as vne
+    from app.pos.models import PosCashMachinePayment
+    for p in ctx.db.scalars(select(PosCashMachinePayment).where(PosCashMachinePayment.session_id == ses_id, PosCashMachinePayment.status == "in_corso")):
+        if vne.refresh(ctx.db, p).status == "in_corso":
+            raise HTTPException(409, "C'è un pagamento in corso sulla cassa automatica: attendi che finisca prima di chiudere")
     ses = pos.close_session(ctx.db, _get(ctx, PosSession, ses_id), ctx.user.id, body.counted_cash, body.z_number, body.notes)
     if not body.z_number and "periferiche" in ctx.state.modules:  # chiusura giornaliera sul registratore
         from app.periferiche import service as per
@@ -578,3 +583,111 @@ def print_courtesy(doc_id: uuid.UUID, body: CourtesyIn | None = None, ctx: Tenan
     payload = per.text_receipt(ctx.db, d, pays, reg.name)
     j = per.enqueue(ctx.db, dev, "print.text" if where == "termica" else "rt.nonfiscal", payload, document_id=d.id, user_id=ctx.user.id)
     return {"job_id": str(j.id), "where": where}
+
+
+# ====================================================================== cassa automatica VNE (app/pos/cassa_automatica.py)
+
+
+def _cm(ctx, pay_id):
+    from app.pos.models import PosCashMachinePayment
+    return _get(ctx, PosCashMachinePayment, pay_id)
+
+
+def _operator(ctx) -> str:
+    return ctx.user.full_name or ctx.user.email
+
+
+@router.get("/casse/{reg_id}/cassa-automatica")
+def cash_machine(reg_id: uuid.UUID, ctx: TenantContext = Depends(cashier)):
+    """Cassa automatica della cassa: dispositivo, WebTool, pagamenti in corso o da verificare, operazione in corso, contenuto."""
+    from app.pos import cassa_automatica as vne
+    return vne.overview(ctx.db, _get(ctx, PosRegister, reg_id))
+
+
+@router.post("/casse/{reg_id}/cassa-automatica/pagamenti", status_code=201)
+def cash_machine_pay(reg_id: uuid.UUID, body: SaleIn, ctx: TenantContext = Depends(cashier)):
+    """Incasso con la cassa automatica: la vendita si registra solo all'esito della macchina."""
+    from app.pos import cassa_automatica as vne
+    p = vne.start(ctx.db, _register(ctx, reg_id), ctx.user.id, _dump(body), _operator(ctx))
+    audit(ctx.db, "pos_cash_machine", "pagamento", p.id, tenant_id=ctx.tenant_id, user_id=ctx.user.id, after={"amount": s(p.amount)})
+    return vne.payment_out(ctx.db, p)
+
+
+@router.get("/cassa-automatica/pagamenti/{pay_id}")
+def cash_machine_payment(pay_id: uuid.UUID, ctx: TenantContext = Depends(cashier)):
+    from app.pos import cassa_automatica as vne
+    return vne.payment_out(ctx.db, vne.refresh(ctx.db, _cm(ctx, pay_id)))
+
+
+class CashCancelIn(BaseModel):
+    mode: Literal["restituisci", "parziale"] = "restituisci"
+
+
+@router.post("/cassa-automatica/pagamenti/{pay_id}/annulla")
+def cash_machine_cancel(pay_id: uuid.UUID, body: CashCancelIn, ctx: TenantContext = Depends(cashier)):
+    from app.pos import cassa_automatica as vne
+    p = vne.request_cancel(ctx.db, _cm(ctx, pay_id), body.mode)
+    audit(ctx.db, "pos_cash_machine", "annullamento", p.id, tenant_id=ctx.tenant_id, user_id=ctx.user.id, after={"mode": body.mode})
+    return vne.payment_out(ctx.db, p)
+
+
+class CashResolveIn(BaseModel):
+    esito: Literal["pagato", "non_pagato"]
+    metodo: str | None = None  # parziale: come è stata incassata la differenza
+    note: str = Field("", max_length=200)
+
+
+@router.post("/cassa-automatica/pagamenti/{pay_id}/risolvi")
+def cash_machine_resolve(pay_id: uuid.UUID, body: CashResolveIn, ctx: TenantContext = Depends(cashier)):
+    """Esito incerto verificato sul display della cassa automatica."""
+    from app.pos import cassa_automatica as vne
+    p = vne.resolve(ctx.db, _cm(ctx, pay_id), ctx.user.id, body.esito, body.metodo, body.note.strip())
+    audit(ctx.db, "pos_cash_machine", "verifica", p.id, tenant_id=ctx.tenant_id, user_id=ctx.user.id,
+          after={"esito": body.esito, "metodo": body.metodo, "note": body.note})
+    return vne.payment_out(ctx.db, p)
+
+
+class CashOpIn(BaseModel):
+    accept_all: bool = False  # carico per il cambio: accetta tutti i tagli
+    amount_cents: int = Field(0, ge=0, le=10_000_000)
+    taglio: str = Field("", pattern=r"^$|^(monete|all|monete_\d{1,3}|banconota_\d{3,5})$")
+    denoms: dict[str, int] = {}
+    comment: str = Field("", max_length=80)
+    what: Literal["monete", "banconote"] = "monete"
+    full: bool = True  # False = fino al fondo cassa
+    wait: str = Field("0", pattern=r"^(0|[1-9]\d?|0:[0-5]\d)$")
+    peripheral: int = Field(2, ge=0, le=2)
+
+
+@router.post("/casse/{reg_id}/cassa-automatica/{op}", status_code=201)
+def cash_machine_op(reg_id: uuid.UUID, op: Literal["stato", "carico", "prelievo", "svuota", "apri", "azzera"], body: CashOpIn,
+                    ctx: TenantContext = Depends(cashier)):
+    """Gestione della cassa automatica. Stato e carico: chi incassa; prelievo, svuotamento, porta, azzeramento: l'amministrazione."""
+    from app.pos import cassa_automatica as vne
+    if op in vne.ADMIN_OPS and ctx.user.role not in ADMINS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"{vne.OPS[op]}: operazione riservata all'amministrazione")
+    j = vne.admin_op(ctx.db, _register(ctx, reg_id), ctx.user.id, op, body.model_dump(), _operator(ctx))
+    audit(ctx.db, "pos_cash_machine", op, j.id, tenant_id=ctx.tenant_id, user_id=ctx.user.id,
+          after={k: v for k, v in body.model_dump().items() if v not in (None, "", {}, 0, False)})
+    return vne.admin_out(j)
+
+
+def _cm_job(ctx, job_id):
+    from app.periferiche.models import DeviceJob
+    j = _get(ctx, DeviceJob, job_id)
+    if j.kind != "cash.admin":
+        raise HTTPException(404, "Operazione non trovata")
+    return j
+
+
+@router.get("/cassa-automatica/lavori/{job_id}")
+def cash_machine_job(job_id: uuid.UUID, ctx: TenantContext = Depends(cashier)):
+    from app.pos import cassa_automatica as vne
+    return vne.admin_out(vne.admin_refresh(ctx.db, _cm_job(ctx, job_id)))
+
+
+@router.post("/cassa-automatica/lavori/{job_id}/stop")
+def cash_machine_stop(job_id: uuid.UUID, ctx: TenantContext = Depends(cashier)):
+    """Fine carico / fine prelievo."""
+    from app.pos import cassa_automatica as vne
+    return vne.admin_out(vne.admin_stop(ctx.db, _cm_job(ctx, job_id)))

@@ -277,7 +277,7 @@ TENANT_TABLES += [
     "contracts", "contract_lines",
     "financial_accounts", "installments", "installment_payments", "payment_reminders", "liquidity_snapshots",
     "einvoices", "einvoice_inbox",
-    "pos_departments", "pos_registers", "pos_sessions", "pos_cash_moves", "pos_payments",
+    "pos_departments", "pos_registers", "pos_sessions", "pos_cash_moves", "pos_payments", "pos_cash_machine_payments",
     "agents", "devices", "device_jobs", "label_templates",
     "saved_reports", "dashboards",
     "vans", "van_route_stops", "van_trips", "van_counts", "van_collections",

@@ -45,3 +45,11 @@ registratore se lo scontrino è uscito: non lo ristampa mai alla cieca.
 
 Stampante termica e accenti: nel gestionale scegliete la «Tabella dei caratteri». PC858 per le Epson originali; se nella
 stampa di prova al posto di «più» compare «piΩ» o altri simboli, scegliete PC850 (o PC437); «Senza accenti» stampa «piu'».
+
+Cassa automatica VNE (Automatic Cash, protocollo 3.06): il file vne_cash.py va tenuto accanto all'agent. Nel gestionale
+aggiungete il dispositivo «Cassa automatica VNE» con l'indirizzo IP della macchina (porta 443, https: il certificato della
+cassa è autofirmato e di norma non si verifica), l'eventuale operatore della cassa e la chiave authKey solo se VNE la
+richiede; poi sceglietela nelle impostazioni della cassa. L'agent esegue il pagamento mentre il cliente inserisce il
+denaro e manda al gestionale inserito, resto e avvisi; un pagamento non si ripete mai alla cieca (se la risposta si perde
+l'agent cerca il pagamento tra quelli in attesa sulla macchina). Pulsante «WebTool» = pagina della macchina https://IP/tool/.
+Per le prove senza macchina c'è il dispositivo «Simulatore cassa automatica» (nessun denaro: il «cliente» paga da solo).

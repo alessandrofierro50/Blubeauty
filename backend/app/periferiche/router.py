@@ -58,7 +58,7 @@ def agent_out(ctx, a: Agent, code: str | None = None) -> dict:
 def device_out(ctx, d: Device, agents: dict | None = None) -> dict:
     a = (agents or {}).get(d.agent_id) or ctx.db.get(Agent, d.agent_id)
     return {"id": str(d.id), "name": d.name, "kind": d.kind, "kind_label": per.KINDS.get(d.kind, d.kind), "driver": d.driver,
-            "driver_label": per.DRIVERS.get(d.driver, {}).get("label", d.driver), "address": d.address, "options": d.options or {},
+            "driver_label": per.DRIVERS.get(d.driver, {}).get("label", d.driver), "address": d.address, "options": per.public_options(d),
             "active": d.active, "agent_id": str(d.agent_id), "agent_name": a.name if a else None, "agent_online": per.is_online(a) if a else False}
 
 
@@ -112,7 +112,7 @@ def download_agent(ctx: TenantContext = Depends(user)):
     """Pacchetto da installare sul computer del negozio: agent, istruzioni e avvio automatico."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for name in ("blubeauty_agent.py", "rt_errors.py", "LEGGIMI.txt", "avvia-agent.bat", "blubeauty-agent.service"):
+        for name in ("blubeauty_agent.py", "rt_errors.py", "vne_cash.py", "LEGGIMI.txt", "avvia-agent.bat", "blubeauty-agent.service"):
             p = agent_dir() / name
             if p.exists():
                 z.write(p, f"BluBeautyAgent/{name}")
@@ -157,7 +157,7 @@ def _save_device(ctx, d: Device, body: DeviceIn):
         raise HTTPException(422, f"Indica {spec['address'].lower()}")
     d.agent_id, d.name, d.driver, d.kind = body.agent_id, body.name.strip(), body.driver, spec["kind"]
     d.address = (body.address or "").strip() or None
-    d.options = {**spec["options"], **(body.options or {})}
+    d.options = per.merge_options(d, spec["options"], body.options or {})
     d.active = body.active
     ctx.db.flush()
     return device_out(ctx, d)
@@ -230,7 +230,7 @@ def test_device(device_id: uuid.UUID, ctx: TenantContext = Depends(admin)):
     else:
         kind, payload = "status", {}
     j = per.enqueue(ctx.db, d, kind, payload, user_id=ctx.user.id)
-    j = _wait(ctx, j.id, 30 if d.kind == "rt" else 12)  # il Custom legge anche le aliquote IVA
+    j = _wait(ctx, j.id, 30 if d.kind == "rt" else 15)  # il Custom legge anche le aliquote IVA
     agent = ctx.db.get(Agent, d.agent_id)
     if j.status == "in_coda":
         per.cancel(ctx.db, j)
@@ -435,7 +435,7 @@ def register_devices(register_id: uuid.UUID, ctx: TenantContext = Depends(user))
     """Periferiche della cassa e dati per l'agent locale (usato quando manca internet)."""
     reg = _get(ctx, PosRegister, register_id)
     out = {}
-    for role in ("rt", "printer", "scale"):
+    for role in ("rt", "printer", "scale", "cash"):
         d = per.register_device(ctx.db, reg, role)
         if d:
             a = ctx.db.get(Agent, d.agent_id)

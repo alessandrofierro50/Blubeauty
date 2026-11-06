@@ -436,6 +436,37 @@ def _session_for(db: Session, reg: PosRegister, session_id) -> PosSession:
     return s
 
 
+def check_sale(db: Session, reg: PosRegister, body: dict) -> Decimal:
+    """Controlli della vendita e totale calcolato dal server (righe, promozioni di cassa) SENZA registrarla: serve alla
+    cassa automatica, che chiede alla macchina l'importo prima che lo scontrino esista. Le righe si costruiscono in un
+    savepoint annullato subito dopo."""
+    _session_for(db, reg, body.get("session_id"))
+    invoice_to = body.get("invoice_party_id")
+    party = db.get(Party, uuid.UUID(str(invoice_to))) if invoice_to else None
+    if invoice_to and (party is None or not party.is_customer):
+        raise fail("Cliente da fatturare non valido")
+    if not body.get("lines"):
+        raise fail("Lo scontrino è vuoto")
+    nonfiscal = (body.get("nonfiscal_reason") or "").strip()
+    if nonfiscal and party:
+        raise fail("La fattura è già un documento fiscale: niente ricevuta non fiscale")
+    if nonfiscal and (reg.settings or {}).get("nonfiscal_allowed") is False:
+        raise fail("In questa cassa la ricevuta non fiscale al posto dello scontrino è disattivata")
+    customer = walk_in_customer(db, reg.tenant_id)
+    co = db.scalar(select(Company).order_by(Company.name))
+    lines = [ln for ln in body["lines"] if not ln.get("_promo") and _q(ln.get("unit_price_gross")) >= 0]
+    sp = db.begin_nested()
+    try:
+        d = Document(tenant_id=reg.tenant_id, company_id=co.id, direction="vendita", doc_type="SCO", series="", doc_date=date.today(),
+                     year=date.today().year, party_id=customer.id, warehouse_id=reg.warehouse_id, moves_stock=False,
+                     prices_vat_included=not party, transport={}, attachment_ids=[], print_options={}, fiscal={})
+        db.add(d)
+        _build_lines(db, d, lines + ([] if body.get("no_promos") else promo_lines(db, lines)), vat_included=not party)
+        return _q(d.total)
+    finally:
+        sp.rollback()
+
+
 def create_sale(db: Session, reg: PosRegister, user_id, body: dict) -> tuple[Document, Decimal, bool]:
     """Scontrino (o fattura al banco se c'è il cliente da fatturare). Restituisce documento, resto, già registrato."""
     client_uuid = uuid.UUID(str(body["client_uuid"])) if body.get("client_uuid") else None

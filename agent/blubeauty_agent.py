@@ -23,6 +23,9 @@ Formato dei lavori (uguale per server e cassa offline), con importi IVA inclusa 
     rt.nonfiscal  stesso formato di print.text, stampato come documento NON fiscale sul registratore telematico
     print.zpl   {zpl, copies}
     scale.read  {}  →  {weight, unit, stable}
+    cash.payment  {amount_cents}  →  {id, status: completed|returned|partial|deleted, amount, inserted, rest, card}
+                  (cassa automatica VNE, in un thread; avanzamenti su /api/agent/lavori/{id}/avanzamento → {cancel: 0|1|2})
+    cash.admin    {op: stato|carico|prelievo|svuota|apri|azzera, ...}  →  esito + {cash: contenuto per taglio}
 """
 
 from __future__ import annotations
@@ -48,7 +51,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 LOCAL_PORT = 8765
 CENT = Decimal("0.01")
 
@@ -1006,6 +1009,143 @@ class SimulatedScale:
 
 
 # =====================================================================================================================
+# Cassa automatica VNE (Automatic Cash, protocollo 3.06): modulo comune vne_cash.py accanto all'agent, identico in
+# tutti i software BluCode (procedura comune «cassa-automatica-vne.md»).
+
+
+def _vne():
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import vne_cash
+    return vne_cash
+
+
+class CashNotSent(DeviceError):
+    """La cassa automatica non ha ricevuto il pagamento (non raggiungibile o rifiuto prima dell'id): nessun denaro preso."""
+    not_sent = True
+
+
+class CashLink:
+    """Avanzamenti di un lavoro della cassa automatica al gestionale (al più uno al secondo); la risposta porta
+    l'annullamento chiesto dall'operatore: 0 niente, 1 accetta il parziale, 2 restituisci il denaro / fine carico."""
+
+    def __init__(self, server, job_id):
+        self.server, self.job_id, self.cancel, self.last, self.at = server, job_id, 0, None, 0.0
+
+    def push(self, info=None, force=False):
+        if info is not None:
+            self.last = info
+        if self.server is None or (not force and time.monotonic() - self.at < 1):
+            return
+        self.at = time.monotonic()
+        try:
+            res = self.server.call("POST", f"/api/agent/lavori/{self.job_id}/avanzamento", {"progress": self.last or {}}, timeout=5)
+            self.cancel = int((res or {}).get("cancel") or 0)
+        except Exception as e:  # noqa: BLE001 — l'avanzamento si rimanda al giro successivo
+            log(f"avanzamento del lavoro {self.job_id} non inviato: {e}")
+
+    def should_cancel(self):
+        self.push()
+        return self.cancel
+
+
+_vne_sims: dict = {}
+
+
+def _sim_port(dev_key: str, options: dict) -> int:
+    """Simulatore VNE (nessun denaro) avviato una volta sola dentro l'agent: il «cliente» paga da solo dopo auto_pay s."""
+    if dev_key not in _vne_sims:
+        V = _vne()
+        auto = options.get("auto_pay", 3)
+        sim = V.VneSim(auto_pay=None if auto in (None, "") else float(auto), scenario=options.get("scenario") or "ok")
+        srv = V.serve(sim, "127.0.0.1", 0)
+        _vne_sims[dev_key] = (sim, srv)
+    return _vne_sims[dev_key][1].server_address[1]
+
+
+class CashMachine:
+    """Driver della cassa automatica: stato (tipo 20), pagamento (run_payment in un thread, con avanzamenti e annullamento)
+    e gestione (carico, prelievo, svuotamento, apertura porta, azzeramento). Un pagamento non si ripete mai alla cieca."""
+
+    def __init__(self, driver: str, address: str, options: dict, dev_key: str = ""):
+        V = _vne()
+        self.V, self.options = V, options or {}
+        o = self.options
+        if driver == "simulatore_vne":
+            host, port, scheme = "127.0.0.1", _sim_port(dev_key or "sim", o), "http"
+        else:
+            host, _, p = (address or "").strip().partition(":")
+            if not host:
+                raise CashNotSent("Indirizzo IP della cassa automatica mancante")
+            scheme = "http" if o.get("scheme") == "http" else "https"
+            port = int(p or o.get("port") or (443 if scheme == "https" else 80))
+        outer = self
+
+        class Tracked(V.VneClient):
+            def pay(self, *a, **k):  # da qui in poi la cassa potrebbe aver preso il pagamento
+                try:
+                    out = super().pay(*a, **k)
+                except V.VneNoAnswer:
+                    outer.reached = True
+                    raise
+                outer.reached = True
+                return out
+
+        self.reached = False
+        self.client = Tracked(host, port, scheme=scheme, verify=bool(o.get("verify_tls")), op_name=(o.get("op_name") or "").strip(),
+                              auth_key=(o.get("auth_key") or "").strip())
+
+    def _status(self) -> dict:
+        s = self.V.summarize_status(self.client.status())
+        problems = s["problems"] + ([f"Tagli in esaurimento: {', '.join(s['low'])}"] if s["low"] else [])
+        return {"model": f"VNE Automatic Cash · contenuto {s['total_cents'] / 100:.2f} €", "problems": problems, "cash": s}
+
+    def run(self, kind: str, p: dict, link: CashLink | None = None) -> dict:
+        V, c = self.V, self.client
+        link = link or CashLink(None, "")
+        try:
+            if kind == "status":
+                return self._status()
+            if kind == "cash.payment":
+                res = V.run_payment(c, int(p["amount_cents"]), on_progress=link.push, should_cancel=link.should_cancel,
+                                    max_wait=int(self.options.get("max_wait") or V.MAX_WAIT), refundable=True)
+                link.push({**res, "final": True}, force=True)
+                return res
+            if kind == "cash.admin":
+                return self.admin(p, link)
+        except V.VneNoAnswer as e:
+            raise DeviceError(f"{e}. Controlla il display della cassa automatica prima di incassare di nuovo") from None
+        except (V.VneError, V.VneUnreachable) as e:
+            if kind == "cash.payment" and self.reached:  # errore dopo che la cassa ha preso il pagamento: esito da verificare
+                raise DeviceError(f"{e}. Controlla il display della cassa automatica prima di incassare di nuovo") from None
+            raise CashNotSent(str(e)) from None
+        raise DeviceError(f"Operazione «{kind}» non prevista per la cassa automatica")
+
+    def admin(self, p: dict, link: CashLink) -> dict:
+        V, c, op = self.V, self.client, p.get("op")
+        if op == "stato":
+            return self._status()
+        if op == "carico":
+            res = V.run_refill(c, on_progress=link.push, should_stop=link.should_cancel, accept_all=bool(p.get("accept_all")))
+        elif op == "prelievo":
+            res = V.run_withdraw(c, int(p.get("amount_cents") or 0), taglio=p.get("taglio") or None, denoms=p.get("denoms") or None,
+                                 comment=p.get("comment") or "", on_progress=link.push, should_stop=link.should_cancel)
+        elif op == "svuota":
+            res = V.run_empty(c, p.get("what") or "monete", full=p.get("full", True), on_progress=link.push)
+        elif op == "apri":
+            c.open_door(str(p.get("wait") or "0"), int(p.get("port") or 1))
+            res = {"status": "completed"}
+        elif op == "azzera":
+            c.reset_stacker(int(p.get("peripheral", 2)))
+            res = {"status": "completed"}
+        else:
+            raise DeviceError(f"Operazione «{op}» non prevista per la cassa automatica")
+        res.update(self._status())
+        return res
+
+
+# =====================================================================================================================
 
 
 def make_driver(dev: dict):
@@ -1022,17 +1162,23 @@ def make_driver(dev: dict):
         return SerialScale(addr, opt)
     if drv == "simulatore_bilancia":
         return SimulatedScale(addr, opt)
+    if drv in ("vne_cash", "simulatore_vne"):
+        return CashMachine(drv, addr, opt, str(dev.get("id") or ""))
     raise DeviceError(f"Driver sconosciuto: {drv}")
 
 
 _device_locks: dict[str, threading.Lock] = {}
 
 
-def execute(dev: dict, kind: str, payload: dict) -> dict:
-    """Esegue un lavoro su un dispositivo (un lavoro per volta per dispositivo: il registratore non accetta sovrapposizioni)."""
+def execute(dev: dict, kind: str, payload: dict, link: CashLink | None = None) -> dict:
+    """Esegue un lavoro su un dispositivo (un lavoro per volta per dispositivo: il registratore non accetta sovrapposizioni;
+    la cassa automatica mai due operazioni insieme). `link`: avanzamenti dei lavori lunghi della cassa automatica."""
     lock = _device_locks.setdefault(str(dev.get("id")), threading.Lock())
     with lock:
-        return make_driver(dev).run(kind, payload or {})
+        drv = make_driver(dev)
+        if isinstance(drv, CashMachine):
+            return drv.run(kind, payload or {}, link)
+        return drv.run(kind, payload or {})
 
 
 # ----------------------------------------------------------------------------------------------------------- utilità
@@ -1150,11 +1296,14 @@ class Agent:
         try:
             if not dev:
                 raise DeviceError("Dispositivo non configurato su questo computer")
-            result = execute(dev, job["kind"], job.get("payload") or {})
+            link = CashLink(self.server, job["id"]) if str(job["kind"]).startswith("cash.") else None
+            result = execute(dev, job["kind"], job.get("payload") or {}, link)
             body = {"ok": True, "result": result}
             log(f"lavoro {job['kind']} su {dev.get('name')}: eseguito")
         except DeviceError as e:
             body = {"ok": False, "error": str(e)}
+            if getattr(e, "not_sent", False):  # la cassa automatica non ha ricevuto nulla: pagamento non avvenuto
+                body["result"] = {"sent": False}
             log(f"lavoro {job['kind']}: {e}")
         except Exception as e:  # noqa: BLE001
             body = {"ok": False, "error": f"Errore imprevisto dell'agent: {e}"}

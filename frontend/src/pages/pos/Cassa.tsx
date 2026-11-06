@@ -20,6 +20,7 @@ import { PRINT_CSS, ReceiptPrint, SessionPrint } from './Receipt'
 import { computePromos, promoLabel } from './promos'
 import { DisplayState, displayChannel } from './Display'
 import { SellPackage, SellVoucher } from '../salone/Prepaid'
+import { CashPanel, CashVerify, CashWait } from './CashMachine'
 import {
   CartLine, CatItem, Catalog, Dept, METHODS, P, Pending, Periph, Resolved, buildIndex, localAgent, rtPayload, cartCents, catalogKey, centsStr, euro, isNetworkError,
   lineCents, local, methodLabel, outboxKey, parseAmount, parseNum, qtyFmt, resolveLocal, toCents, uuid4,
@@ -215,6 +216,21 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
   const [variantOf, setVariantOf] = useState<{ item: CatItem; quantity?: number } | null>(null)
   const [modal, setModal] = useState<null | 'pay' | 'search' | 'customer' | 'returns' | 'receipts' | 'move' | 'close' | 'outbox' | 'buono' | 'pacchetto'>(null)
   const [last, setLast] = useState<any>(null)
+  // cassa automatica VNE: il pagamento in corso blocca il carrello finché la macchina dà l'esito
+  const hasCash = !!periph?.devices?.cash
+  const [cashPay, setCashPay] = useState<any>(null)
+  const [cashVerify, setCashVerify] = useState<any[]>([])
+  const [cashModal, setCashModal] = useState<null | 'panel' | 'verify'>(null)
+  const canAdminCash = ['amministratore', 'amministrazione'].includes(me?.user?.role)
+  const loadCash = useCallback(() => {
+    if (!hasCash) return
+    P(`/casse/${reg.id}/cassa-automatica`).then((o) => {
+      const open = (o.payments || []).find((p: any) => p.status === 'in_corso')
+      if (open) setCashPay((cur: any) => cur ?? open)  // pagamento lasciato in corso (pagina ricaricata): si riprende l'attesa
+      setCashVerify((o.payments || []).filter((p: any) => p.status === 'da_verificare'))
+    }).catch(() => {})
+  }, [hasCash, reg.id])
+  useEffect(() => { loadCash() }, [loadCash])
   const inputRef = useRef<HTMLInputElement>(null)
   // promozioni di cassa (3x2, N-esimo pezzo, soglia): calcolate qui per il totale, ricalcolate dal server che fa fede
   const promoLines = useMemo(() => (refundMode || !cat.promotions?.length ? [] : computePromos(lines.map((l) => {
@@ -464,6 +480,35 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
     if (await submit('vendita', body, total, paid - total, rt)) { clearCart(); setModal(null) }
   }
 
+  async function payWithMachine(others: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null, voucherCode: string | null) {
+    const body: any = {
+      client_uuid: uuid4(), session_id: session.id, lines: lines.map(lineBody), lottery_code: nonfiscal ? null : lottery, nonfiscal_reason: nonfiscal,
+      payments: others.map((p) => ({ method: p.method, amount: centsStr(p.amount) })),
+      customer_id: customer && !invoice ? customer.id : null, invoice_party_id: customer && invoice ? customer.id : null, voucher_code: voucherCode,
+    }
+    try {
+      setCashPay(await P(`/casse/${reg.id}/cassa-automatica/pagamenti`, { body }))
+      setModal(null)
+    } catch (e) { notifyError(e) }
+  }
+
+  function cashDone(p: any) {
+    setCashPay(null)
+    if (p.status === 'pagato') {
+      clearCart()
+      if (p.receipt) { setLast(p.receipt); if (reg.settings?.auto_print) print('receipt', p.receipt) }
+      notifications.show({ color: 'green', title: 'Pagato con la cassa automatica', message: p.message })
+    } else if (p.status === 'da_verificare') {
+      notifications.show({ color: 'orange', title: 'Cassa automatica: da verificare', message: p.message, autoClose: false })
+      clearCart()  // la vendita resta sul server: si registra dalla verifica, mai con un nuovo incasso
+      loadCash()
+      setCashModal('verify')
+    } else {
+      notifications.show({ color: 'orange', title: 'Cassa automatica', message: `${p.message || p.status_label}: la vendita resta da incassare` })
+      setModal('pay')
+    }
+  }
+
   async function refundCart(method: string, restock: boolean, reason: string) {
     const body = { client_uuid: uuid4(), session_id: session.id, lines: lines.map(lineBody), refund_method: method, restock, reason: reason || 'Reso senza scontrino' }
     const rt = { ...rtPayload(cat, lines, [], [{ method, amount: total }], null, (l) => lineBody(l).description), reference: null, void: false }
@@ -496,6 +541,9 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
               <Menu.Item leftSection={<IconPackage size={16} />} onClick={() => setModal('pacchetto')}>Vendi un pacchetto o abbonamento</Menu.Item>
             </Menu.Dropdown>
           </Menu>}
+          {hasCash && cashVerify.length > 0 && <Badge color="orange" style={{ cursor: 'pointer' }} onClick={() => setCashModal('verify')}>{cashVerify.length} da verificare</Badge>}
+          {hasCash && online && <Button size="xs" variant="subtle" color="white" leftSection={<IconCash size={16} />} onClick={() => setCashModal('panel')}
+            data-testid="cassa-gestione-vne">Gestione cassa automatica</Button>}
           <Button size="xs" variant="subtle" color="white" leftSection={<IconReceipt size={16} />} onClick={() => setModal('receipts')}>Scontrini</Button>
           <Button size="xs" variant="subtle" color="white" leftSection={<IconCash size={16} />} onClick={() => setModal('move')}>Prelievi <Kbd ml={4} size="xs">F10</Kbd></Button>
           <Button size="xs" variant="subtle" color="white" leftSection={<IconLock size={16} />} onClick={() => setModal('close')}>Chiusura</Button>
@@ -623,7 +671,12 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
         </SimpleGrid>
       </Modal>
       {modal === 'pay' && !refundMode && <PayModal total={total} invoice={invoice ? customer : null} lottery={!!cat.settings?.lottery && !invoice}
-        nonfiscalAllowed={!invoice && reg.settings?.nonfiscal_allowed !== false && online} onClose={() => setModal(null)} onPay={pay} />}
+        nonfiscalAllowed={!invoice && reg.settings?.nonfiscal_allowed !== false && online} onClose={() => setModal(null)} onPay={pay}
+        onCashMachine={hasCash && online ? payWithMachine : undefined} />}
+      {cashPay && <CashWait key={cashPay.id} payment={cashPay} onDone={cashDone} />}
+      {cashModal === 'panel' && <CashPanel registerId={reg.id} canAdmin={canAdminCash} onClose={() => setCashModal(null)} />}
+      {cashModal === 'verify' && <CashVerify payments={cashVerify} onClose={() => setCashModal(null)}
+        onResolved={(p) => { if (p.receipt) setLast(p.receipt); notifications.show({ message: p.status === 'pagato' ? 'Vendita registrata' : 'Pagamento segnato come non pagato' }); loadCash() }} />}
       {modal === 'buono' && <SellVoucher registerId={reg.id} purchaser={customer ?? undefined} onClose={() => setModal(null)} />}
       {modal === 'pacchetto' && <SellPackage registerId={reg.id} client={customer ?? undefined} onClose={() => setModal(null)} />}
       {modal === 'pay' && refundMode && <RefundModal total={total} onClose={() => setModal(null)} onRefund={refundCart} />}
@@ -747,9 +800,10 @@ function PromptModal({ p, market, onClose }: { p: Prompt | null; market: boolean
 
 const NONFISCAL_REASONS = ['Utilizzo di un buono regalo già pagato', 'Seduta di un pacchetto già pagato', 'Pagamento di una fattura già emessa', 'Altro motivo']
 
-function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }: {
+function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay, onCashMachine }: {
   total: number; invoice: any; lottery: boolean; nonfiscalAllowed: boolean; onClose: () => void
   onPay: (p: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null, voucherCode: string | null) => Promise<void>
+  onCashMachine?: (others: { method: string; amount: number }[], lottery: string | null, nonfiscal: string | null, voucherCode: string | null) => Promise<void>
 }) {
   // buono regalo multiuso: si scala dal credito, lo scontrino si emette ora pagato «con buono regalo» (non è un nuovo incasso)
   const [voucher, setVoucher] = useState<any>(null)
@@ -775,6 +829,13 @@ function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }:
     if (method !== 'contanti' && c > residual) { notifications.show({ color: 'red', message: 'Con carta o buoni non si può superare il dovuto: il resto si dà solo in contanti' }); return }
     setPays((x) => [...x, { method, amount: c }])
     setAmount('')
+  }
+  // cassa automatica: la macchina incassa ciò che resta dopo carta o buoni già indicati (mai insieme ai contanti a mano)
+  const machine = async () => {
+    if (!onCashMachine || busy || residual <= 0 || cash > 0 || (doc === 'ricevuta' && !nonfiscal) || (lot && !/^[A-Z0-9]{8}$/i.test(lot))) return
+    setBusy(true)
+    await onCashMachine(pays, lot ? lot.toUpperCase() : null, nonfiscal, pays.some((p) => p.method === 'buono_regalo') ? voucher?.code ?? null : null)
+    setBusy(false)
   }
   const confirm = async () => { if (!valid || busy) return; setBusy(true); await onPay(pays, lot ? lot.toUpperCase() : null, nonfiscal, pays.some((p) => p.method === 'buono_regalo') ? voucher?.code ?? null : null); setBusy(false) }
   const useVoucher = async () => {
@@ -820,6 +881,10 @@ function PayModal({ total, invoice, lottery, nonfiscalAllowed, onClose, onPay }:
               <Button color="grape" disabled={!vcode.trim()} onClick={useVoucher}>Usa il buono</Button>
             </Group>
           ) : !invoice && <Button mt="sm" variant="light" color="grape" leftSection={<IconGift size={18} />} onClick={() => setAskVoucher(true)} data-testid="cassa-paga-buono">Paga con un buono regalo</Button>)}
+          {onCashMachine && (
+            <Button mt="sm" fullWidth size="lg" color="teal" leftSection={<IconCash size={22} />} loading={busy} disabled={cash > 0} onClick={machine}
+              data-testid="cassa-automatica">Cassa automatica · {euro(residual)}</Button>
+          )}
           <SimpleGrid cols={4} mt="sm" spacing={6}>
             {METHODS.map((m) => (
               <Button key={m.value} size="md" variant={m.value === 'contanti' ? 'filled' : 'light'} color={m.value === 'contanti' ? 'green' : 'blue'}

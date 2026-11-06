@@ -116,4 +116,36 @@ class PosPayment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-POS_TABLES = ["pos_departments", "pos_registers", "pos_sessions", "pos_cash_moves", "pos_payments"]
+class PosCashMachinePayment(Base):
+    """Incasso con la cassa automatica VNE: la vendita resta qui (carrello bloccato) finché la macchina dà l'esito.
+
+    Solo all'esito «completed» nasce lo scontrino (app.pos.service.create_sale) pagato in contanti: ricevuto = inserito,
+    resto = erogato (con la carta sulla macchina, inserted = -2, pagato con carta). Annullato → resta da incassare;
+    parziale o senza riscontro → «da_verificare» (mai un nuovo incasso automatico)."""
+
+    __tablename__ = "pos_cash_machine_payments"
+    __table_args__ = (UniqueConstraint("tenant_id", "client_uuid"),)
+
+    id: Mapped[uuid.UUID] = pk()
+    tenant_id: Mapped[uuid.UUID] = tenant_fk()
+    register_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("pos_registers.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pos_sessions.id", ondelete="SET NULL"))
+    device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"), index=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("device_jobs.id", ondelete="SET NULL"), index=True)
+    client_uuid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))  # quello della vendita: un doppio clic non fa due pagamenti
+    # in_corso | pagato | annullato | non_eseguito | da_verificare | non_pagato
+    status: Mapped[str] = mapped_column(String(14), default="in_corso", index=True)
+    total: Mapped[Decimal] = mapped_column(MONEY)  # totale della vendita
+    amount: Mapped[Decimal] = mapped_column(MONEY)  # parte chiesta alla cassa automatica (il resto con altri metodi)
+    sale: Mapped[dict] = mapped_column(JSONType, default=dict)  # vendita da registrare all'esito (stesso formato di /vendite)
+    result: Mapped[dict] = mapped_column(JSONType, default=dict)  # esito della macchina (inserted, rest, status, card…)
+    message: Mapped[str | None] = mapped_column(Text)
+    cancel_request: Mapped[int] = mapped_column(Integer, default=0)  # 1 accetta il parziale, 2 restituisci
+    document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"))
+    resolution: Mapped[dict] = mapped_column(JSONType, default=dict)  # verifica manuale dell'esito incerto
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+POS_TABLES = ["pos_departments", "pos_registers", "pos_sessions", "pos_cash_moves", "pos_payments", "pos_cash_machine_payments"]

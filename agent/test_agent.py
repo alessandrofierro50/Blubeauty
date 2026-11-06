@@ -6,6 +6,7 @@
 import json
 import re
 import threading
+import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -377,3 +378,91 @@ def test_descrizioni_lunghe_sul_registratore_da_57mm():
     rows = A.text_rows(p, 32, rt=True)
     assert all(len(r) <= 32 for r in rows) and rows[-1].endswith("45,00")
     assert "Trattamento ristrutturante alla cheratina" == " ".join(r.replace("22%", "").replace("45,00", "").strip() for r in rows).strip()
+
+
+# ---------------------------------------------------------------------------------------------- cassa automatica VNE
+
+
+class FakeServer:
+    """Gestionale finto: registra gli avanzamenti e gli esiti, risponde con l'annullamento chiesto."""
+
+    def __init__(self, cancel_after=None, cancel=2):
+        self.calls, self.cancel_after, self.cancel = [], cancel_after, cancel
+
+    def call(self, method, path, body=None, timeout=30):
+        self.calls.append((method, path, body))
+        progress = [c for c in self.calls if c[1].endswith("/avanzamento")]
+        if self.cancel_after is not None and len(progress) >= self.cancel_after:
+            return {"cancel": self.cancel}
+        return {"cancel": 0}
+
+
+def sim_dev(name, **options):
+    return {"id": f"vne-{name}", "name": "Cassa automatica", "kind": "cassa_auto", "driver": "simulatore_vne", "address": "", "options": options}
+
+
+def test_vne_modulo_comune_identico():
+    from pathlib import Path
+    here = Path(__file__).resolve().parent
+    common = here.parents[1] / "progetto_blucode_informatica" / "strumenti" / "vne" / "vne_cash.py"
+    if not common.exists():
+        pytest.skip("repository di progetto non presente")
+    assert (here / "vne_cash.py").read_bytes() == common.read_bytes()
+
+
+def test_vne_pagamento_con_resto_e_avanzamenti():
+    srv = FakeServer()
+    link = A.CashLink(srv, "job-1")
+    res = A.execute(sim_dev("ok", auto_pay=0.3), "cash.payment", {"amount_cents": 1250}, link)
+    assert res["status"] == "completed" and res["inserted"] == 2000 and res["rest"] == 750 and res["card"] is False
+    pushes = [c for c in srv.calls if c[1] == "/api/agent/lavori/job-1/avanzamento"]
+    assert pushes and pushes[-1][2]["progress"]["final"] is True and pushes[-1][2]["progress"]["status"] == "completed"
+
+
+def test_vne_annullamento_dal_gestionale():
+    srv = FakeServer(cancel_after=1, cancel=2)  # l'operatore annulla: la cassa restituisce il denaro
+    res = A.execute(sim_dev("annulla", auto_pay=None), "cash.payment", {"amount_cents": 500}, A.CashLink(srv, "job-2"))
+    assert res["status"] == "deleted" and res["inserted"] == 0
+
+
+def test_vne_non_raggiungibile_pagamento_non_avvenuto():
+    dev = {"id": "vne-off", "name": "Cassa", "driver": "vne_cash", "address": "127.0.0.1:1", "options": {"scheme": "http"}}
+    with pytest.raises(A.CashNotSent):
+        A.execute(dev, "cash.payment", {"amount_cents": 100})
+    agent = A.Agent({"server": "http://gestionale.test", "token": "t", "devices": [dev]})
+    agent.server = FakeServer()
+    agent.handle({"id": "job-3", "kind": "cash.payment", "payload": {"amount_cents": 100}, "device": dev})
+    method, path, body = agent.server.calls[-1]
+    assert path == "/api/agent/lavori/job-3/esito" and body["ok"] is False and body["result"] == {"sent": False}
+
+
+def test_vne_cassa_occupata_rifiuto_prima_dell_id():
+    with pytest.raises(A.CashNotSent) as e:
+        A.execute(sim_dev("busy", scenario="busy"), "cash.payment", {"amount_cents": 100})
+    assert "110" in str(e.value)
+
+
+def test_vne_stato_carico_prelievo_svuotamento():
+    dev = sim_dev("gestione", auto_pay=None)
+    st = A.execute(dev, "status", {})
+    assert st["cash"]["total_cents"] > 0 and st["model"].startswith("VNE Automatic Cash")
+    sim = A._vne_sims["vne-gestione"][0]
+    srv = FakeServer()
+
+    def feed():  # il carico: l'operatore inserisce 10 € e poi preme «Fine carico»
+        time.sleep(0.4)
+        sim.insert(1000)
+        time.sleep(1.2)
+        srv.cancel_after = 0
+
+    t = threading.Thread(target=feed)
+    t.start()
+    res = A.execute(dev, "cash.admin", {"op": "carico"}, A.CashLink(srv, "job-4"))
+    t.join()
+    assert res["status"] == "completed" and res["amount"] == 1000 and "cash" in res
+    res = A.execute(dev, "cash.admin", {"op": "prelievo", "amount_cents": 2000, "taglio": "all"}, A.CashLink(FakeServer(), "job-5"))
+    assert res["status"] == "completed" and res["withdrawed"] == 2000
+    res = A.execute(dev, "cash.admin", {"op": "apri", "wait": "0"})
+    assert res["status"] == "completed"
+    res = A.execute(dev, "cash.admin", {"op": "svuota", "what": "monete", "full": False})
+    assert res["status"] == "completed" and res["what"] == "monete" and res["removed"] >= 0

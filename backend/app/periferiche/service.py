@@ -24,7 +24,8 @@ from app.pos.models import PosDepartment, PosPayment, PosRegister, PosSession
 CENT = Decimal("0.01")
 ONLINE_SECONDS = 70  # l'agent si fa vivo almeno ogni 25-40 secondi
 
-KINDS = {"rt": "Registratore telematico", "stampante": "Stampante di ricevute", "etichette": "Stampante di etichette", "bilancia": "Bilancia"}
+KINDS = {"rt": "Registratore telematico", "stampante": "Stampante di ricevute", "etichette": "Stampante di etichette", "bilancia": "Bilancia",
+         "cassa_auto": "Cassa automatica"}
 DRIVERS = {
     "epson_rt": {"kind": "rt", "label": "Epson FP-81 II RT / FP-90III (rete)", "address": "Indirizzo IP, es. 192.168.1.50",
                  "options": {"serial": "", "departments": {"22": 1, "10": 2, "5": 3, "4": 4, "0": 5}}},
@@ -43,7 +44,14 @@ DRIVERS = {
     "bilancia_seriale": {"kind": "bilancia", "label": "Bilancia su porta seriale/USB", "address": "Porta, es. COM3 o /dev/ttyUSB0",
                          "options": {"baud": 9600, "request": "W\\r", "regex": "([-+]?\\d+[.,]\\d+)", "grams": False}},
     "simulatore_bilancia": {"kind": "bilancia", "label": "Simulatore (peso inventato o fisso)", "address": "", "options": {"weight": ""}},
+    # cassa automatica VNE (protocollo Automatic Cash 3.06, agent/vne_cash.py): https con certificato autofirmato della macchina
+    "vne_cash": {"kind": "cassa_auto", "label": "Cassa automatica VNE (Automatic Cash) in rete", "address": "Indirizzo IP della cassa, es. 192.168.1.80",
+                 "options": {"port": 443, "scheme": "https", "verify_tls": False, "op_name": "", "max_wait": 600, "auth_key": ""}},
+    "simulatore_vne": {"kind": "cassa_auto", "label": "Simulatore cassa automatica (prove, nessun denaro)", "address": "",
+                       "options": {"auto_pay": 3, "max_wait": 600}},
 }
+# opzioni che vanno solo all'agent e non tornano mai al browser (authKey della cassa automatica, data da VNE)
+SECRET_OPTIONS = ("auth_key",)
 # Tabelle dei caratteri delle termiche (agent: CHARSETS). Esperienza di BluOrderScan: le compatibili spesso al n. 19 non
 # hanno la PC858 ma un'altra tabella (es. greca: «più» → «piΩ») e vanno messe su PC850 o PC437.
 CHARSETS = {"pc858": "PC858 (Epson originali: accenti ed €)", "pc850": "PC850 (compatibili: accenti, € scritto EUR)",
@@ -120,6 +128,31 @@ def agent_from_token(db: Session, token: str | None) -> Agent:
     return agent
 
 
+def public_options(d: Device) -> dict:
+    """Opzioni del dispositivo per il browser: senza i segreti (al loro posto «<nome>_set»: impostato sì/no)."""
+    o = dict(d.options or {})
+    for k in SECRET_OPTIONS:
+        if k in o:
+            o[f"{k}_set"] = bool(o.pop(k))
+    return o
+
+
+def merge_options(d: Device, defaults: dict, new: dict) -> dict:
+    """Opzioni salvate: un segreto lasciato vuoto resta quello di prima (si toglie con «<nome>_clear»)."""
+    old = d.options or {}
+    out = {**defaults, **{k: v for k, v in (new or {}).items() if not k.endswith(("_set", "_clear"))}}
+    for k in SECRET_OPTIONS:
+        if k not in defaults:
+            continue
+        if (new or {}).get(f"{k}_clear"):
+            out[k] = ""
+        elif not str((new or {}).get(k) or "").strip():
+            out[k] = old.get(k) or ""
+        else:
+            out[k] = str(new[k]).strip()
+    return out
+
+
 def device_config(d: Device) -> dict:
     return {"id": str(d.id), "name": d.name, "kind": d.kind, "driver": d.driver, "address": d.address, "options": d.options or {}}
 
@@ -166,13 +199,49 @@ def complete(db: Session, agent: Agent, job_id: uuid.UUID, ok: bool, result: dic
     if j is None or j.agent_id != agent.id:
         raise fail("Lavoro non trovato", status.HTTP_404_NOT_FOUND)
     agent.last_seen_at = now()
-    if j.status in ("eseguito", "annullato"):
-        return j  # esito ripetuto: già registrato
+    if j.status in ("eseguito", "annullato", "errore"):
+        return j  # esito ripetuto (o lavoro già chiuso dal gestionale): già registrato
     j.status = "eseguito" if ok else "errore"
     j.result, j.error, j.done_at = result or {}, (None if ok else (error or "Errore sconosciuto")[:1000]), now()
     _mirror(db, j)
     db.flush()
+    if j.kind == "cash.payment":  # esito della cassa automatica: incasso registrato solo adesso
+        from app.pos import cassa_automatica
+        cassa_automatica.on_job_result(db, j)
     return j
+
+
+def progress(db: Session, agent: Agent, job_id: uuid.UUID, info: dict) -> int:
+    """Avanzamento di un lavoro lungo (cassa automatica): lo salva e risponde con l'annullamento chiesto (0, 1, 2)."""
+    j = db.get(DeviceJob, job_id)
+    if j is None or j.agent_id != agent.id:
+        raise fail("Lavoro non trovato", status.HTTP_404_NOT_FOUND)
+    agent.last_seen_at = now()
+    res = dict(j.result or {})
+    if j.status == "inviato":
+        res["progress"] = {k: v for k, v in (info or {}).items() if isinstance(v, (str, int, float, bool, type(None)))}
+        j.result = res
+        flag_modified(j, "result")
+        db.flush()
+    return int(res.get("cancel") or 0)
+
+
+def request_stop(db: Session, j: DeviceJob, code: int = 2) -> None:
+    """Annullamento (pagamento) o «fine carico/prelievo» per un lavoro già preso dall'agent: lo legge al prossimo avanzamento."""
+    j.result = {**(j.result or {}), "cancel": int(code)}
+    flag_modified(j, "result")
+    db.flush()
+
+
+def expire_unclaimed(db: Session, j: DeviceJob, seconds: int, error: str) -> bool:
+    """Lavoro rimasto in coda oltre `seconds` (computer spento o scollegato): chiuso come non eseguito, «sent: False».
+    UPDATE condizionato: se nel frattempo l'agent l'ha preso, resta suo."""
+    if j.status != "in_coda" or not j.created_at or (now() - j.created_at).total_seconds() < seconds:
+        return False
+    res = db.execute(update(DeviceJob).where(DeviceJob.id == j.id, DeviceJob.status == "in_coda")
+                     .values(status="errore", result={"sent": False}, error=error[:1000], done_at=now()))
+    db.refresh(j)
+    return bool(res.rowcount)
 
 
 def _mirror(db: Session, j: DeviceJob) -> None:

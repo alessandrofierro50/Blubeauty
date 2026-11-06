@@ -97,3 +97,14 @@ def job_result(job_id: uuid.UUID, body: ResultIn, dep=Depends(agent_dep)):
     agent, db = dep
     j = per.complete(db, agent, job_id, body.ok, body.result, body.error)
     return {"id": str(j.id), "status": j.status}
+
+
+class ProgressIn(BaseModel):
+    progress: dict = {}
+
+
+@router.post("/lavori/{job_id}/avanzamento")
+def job_progress(job_id: uuid.UUID, body: ProgressIn, dep=Depends(agent_dep)):
+    """Avanzamento dei lavori lunghi (cassa automatica): la risposta porta l'annullamento chiesto (0, 1 parziale, 2 restituisci)."""
+    agent, db = dep
+    return {"cancel": per.progress(db, agent, job_id, body.progress)}

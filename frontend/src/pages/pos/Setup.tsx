@@ -130,8 +130,8 @@ function RegisterEditor({ reg, onClose, onSaved }: { reg: any; onClose: () => vo
         <>
           <Text fw={600} mt="lg" mb="xs">Periferiche</Text>
           {L.devs.length === 0 ? <Text size="sm" c="dimmed">Nessuna periferica: si collegano in «Computer e periferiche».</Text> : (
-            <SimpleGrid cols={{ base: 1, sm: 3 }}>
-              {([['rt', 'rt', 'Registratore telematico'], ['printer', 'stampante', 'Stampante di ricevute'], ['scale', 'bilancia', 'Bilancia']] as const).map(([role, kind, label]) => (
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
+              {([['rt', 'rt', 'Registratore telematico'], ['printer', 'stampante', 'Stampante di ricevute'], ['scale', 'bilancia', 'Bilancia'], ['cash', 'cassa_auto', 'Cassa automatica']] as const).map(([role, kind, label]) => (
                 <Select key={role} label={label} clearable value={r.devices?.[role] ?? null} placeholder="Nessuno"
                   data={L.devs.filter((d: any) => d.kind === kind).map((d: any) => ({ value: d.id, label: `${d.name} · ${d.agent_name}` }))}
                   onChange={(v) => set('devices', { ...(r.devices || {}), [role]: v })} />
