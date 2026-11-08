@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from app.agenda import service as agenda
 from app.core.deps import TenantContext, require_module
 from app.marketing import service as msg
+from app.marketing import wa_templates as wat
 from app.marketing.models import Automation, Campaign, Message
 
 router = APIRouter(prefix="/api/marketing", tags=["marketing"])
@@ -38,7 +39,8 @@ def mk_admin(ctx: TenantContext = Depends(mk_reader)) -> TenantContext:
 def settings_out(ctx: TenantContext) -> dict:
     st = msg.settings(ctx.db, ctx.tenant_id)
     return {"whatsapp_mode": st.whatsapp_mode, "whatsapp_phone_id": st.whatsapp_phone_id,
-            "whatsapp_token_set": bool(st.whatsapp_token_enc), "review_url": st.review_url, "sender_name": st.sender_name}
+            "whatsapp_token_set": bool(st.whatsapp_token_enc), "whatsapp_waba_id": st.whatsapp_waba_id,
+            "review_url": st.review_url, "sender_name": st.sender_name}
 
 
 @router.get("/impostazioni")
@@ -50,6 +52,7 @@ class SettingsIn(BaseModel):
     whatsapp_mode: str = Field("simulato", pattern="^(simulato|cloud_api)$")
     whatsapp_phone_id: str | None = Field(None, max_length=40)
     whatsapp_token: str | None = Field(None, max_length=1000)  # vuoto = lascia quello salvato
+    whatsapp_waba_id: str | None = Field(None, max_length=40, pattern=r"^\d*$")  # ID dell'account WhatsApp Business
     review_url: str | None = Field(None, max_length=300)
     sender_name: str | None = Field(None, max_length=80)
 
@@ -60,7 +63,8 @@ def put_settings(body: SettingsIn, ctx: TenantContext = Depends(agenda_admin)):
     st = msg.settings(ctx.db, ctx.tenant_id)
     if body.whatsapp_mode == "cloud_api" and not (body.whatsapp_phone_id and (body.whatsapp_token or st.whatsapp_token_enc)):
         raise HTTPException(422, "Per WhatsApp Business servono Phone number ID e token di accesso")
-    st.whatsapp_mode, st.whatsapp_phone_id = body.whatsapp_mode, body.whatsapp_phone_id
+    st.whatsapp_mode, st.whatsapp_phone_id = body.whatsapp_mode, (body.whatsapp_phone_id or "").strip() or None
+    st.whatsapp_waba_id = (body.whatsapp_waba_id or "").strip() or None
     st.review_url, st.sender_name = body.review_url, body.sender_name
     if body.whatsapp_token:
         st.whatsapp_token_enc = encrypt(body.whatsapp_token.strip())
@@ -71,7 +75,31 @@ def put_settings(body: SettingsIn, ctx: TenantContext = Depends(agenda_admin)):
 def automation_out(a: Automation, modules: list[str]) -> dict:
     needs = "agenda" if a.kind in msg.AGENDA_KINDS else "pos" if a.kind in msg.PREPAID_KINDS else "marketing"
     return {"id": str(a.id), "kind": a.kind, "label": msg.KIND_LABEL[a.kind], "enabled": a.enabled, "channel": a.channel,
-            "offset": a.offset, "template": a.template, "module": needs, "available": needs in modules}
+            "offset": a.offset, "template": a.template, "module": needs, "available": needs in modules, "wa": wat.out(a)}
+
+
+# --------------------------------------------------------------------------- modelli WhatsApp da far approvare a Meta
+@router.post("/modelli/invia")
+def submit_templates(ctx: TenantContext = Depends(agenda_admin)):
+    """Chiede a Meta l'approvazione dei modelli di tutti gli automatici attivi che non ne hanno uno valido."""
+    r = wat.submit_all(ctx.db, ctx.tenant_id, ctx.state.modules)
+    return {**r, "automations": [automation_out(a, ctx.state.modules) for a in msg.ensure_automations(ctx.db, ctx.tenant_id)]}
+
+
+@router.post("/modelli/aggiorna")
+def sync_templates(ctx: TenantContext = Depends(agenda_admin)):
+    """Legge da Meta lo stato dei modelli (approvato, rifiutato con il motivo…)."""
+    changed = wat.sync(ctx.db, ctx.tenant_id)
+    return {"changed": changed, "automations": [automation_out(a, ctx.state.modules) for a in msg.ensure_automations(ctx.db, ctx.tenant_id)]}
+
+
+@router.post("/automatici/{auto_id}/modello")
+def submit_one(auto_id: uuid.UUID, ctx: TenantContext = Depends(agenda_admin)):
+    a = ctx.db.get(Automation, auto_id)
+    if a is None:
+        raise HTTPException(404, "Non trovato")
+    wat.submit(ctx.db, ctx.tenant_id, a)
+    return automation_out(a, ctx.state.modules)
 
 
 @router.get("/automatici")
@@ -132,7 +160,7 @@ class CampaignIn(BaseModel):
 def campaign_out(c: Campaign) -> dict:
     return {"id": str(c.id), "name": c.name, "segment": c.segment, "segment_label": msg.SEGMENTS.get(c.segment, c.segment),
             "body": c.body, "status": c.status, "recipients": c.recipients, "created_at": c.created_at.isoformat(),
-            "sent_at": c.sent_at.isoformat() if c.sent_at else None}
+            "sent_at": c.sent_at.isoformat() if c.sent_at else None, "wa": wat.out(c)}
 
 
 @router.get("/campagne")
@@ -150,8 +178,38 @@ def send_campaign(body: CampaignIn, ctx: TenantContext = Depends(mk_admin)):
     c = Campaign(tenant_id=ctx.tenant_id, name=body.name, segment=body.segment, body=body.body, created_by=ctx.user.full_name)
     ctx.db.add(c)
     ctx.db.flush()
+    if msg.settings(ctx.db, ctx.tenant_id).whatsapp_mode == "cloud_api":
+        # con WhatsApp vero la campagna parte solo col suo modello approvato da Meta: resta in bozza e si invia dopo
+        wat.submit(ctx.db, ctx.tenant_id, c)
+        return campaign_out(c)
+    return _send(ctx, c)
+
+
+def _send(ctx: TenantContext, c: Campaign) -> dict:
     msg.send_campaign(ctx.db, ctx.tenant_id, c, {"salone": agenda.salon_name(ctx.db, ctx.tenant_id),
                                                    "link": agenda.public_link(ctx.db, ctx.tenant_id)})
+    return campaign_out(c)
+
+
+@router.post("/campagne/{campaign_id}/invia")
+def send_draft(campaign_id: uuid.UUID, ctx: TenantContext = Depends(mk_admin)):
+    """Invia una campagna in bozza, quando Meta ha approvato il suo modello."""
+    c = ctx.db.get(Campaign, campaign_id)
+    if c is None:
+        raise HTTPException(404, "Campagna non trovata")
+    if c.status == "inviata":
+        return campaign_out(c)
+    if msg.settings(ctx.db, ctx.tenant_id).whatsapp_mode == "cloud_api" and wat.state(c) != "approved":
+        raise HTTPException(409, "Meta non ha ancora approvato il messaggio della campagna: premi «Aggiorna stato» più tardi")
+    return _send(ctx, c)
+
+
+@router.post("/campagne/{campaign_id}/modello")
+def resubmit_campaign(campaign_id: uuid.UUID, ctx: TenantContext = Depends(mk_admin)):
+    c = ctx.db.get(Campaign, campaign_id)
+    if c is None or c.status == "inviata":
+        raise HTTPException(404, "Campagna non trovata")
+    wat.submit(ctx.db, ctx.tenant_id, c)
     return campaign_out(c)
 
 

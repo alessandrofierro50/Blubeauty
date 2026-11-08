@@ -35,6 +35,7 @@ class MarketingSettings(Base):
     whatsapp_mode: Mapped[str] = mapped_column(String(20), default="simulato")  # simulato | cloud_api
     whatsapp_phone_id: Mapped[str | None] = mapped_column(String(40))  # Phone number ID di WhatsApp Business Cloud API
     whatsapp_token_enc: Mapped[str | None] = mapped_column(Text)  # token cifrato con SECRET_KEY
+    whatsapp_waba_id: Mapped[str | None] = mapped_column(String(40))  # WhatsApp Business Account ID: modelli dei messaggi
     review_url: Mapped[str | None] = mapped_column(String(300))  # link della recensione Google
     sender_name: Mapped[str | None] = mapped_column(String(80))
 
@@ -79,6 +80,8 @@ class Automation(Base):
     # promemoria: ore prima; richiamo: giorni (se il servizio non ha i suoi); clienti persi: giorni senza visite
     offset: Mapped[int | None] = mapped_column(Integer)
     template: Mapped[str] = mapped_column(Text)
+    # modello approvato da Meta (app/marketing/wa_templates.py): name, version, status, text, params, category, reason
+    wa_template: Mapped[dict] = mapped_column(JSONType, default=dict)
 
 
 class Campaign(Base):
@@ -93,6 +96,7 @@ class Campaign(Base):
     status: Mapped[str] = mapped_column(String(12), default="bozza")  # bozza | inviata
     recipients: Mapped[int] = mapped_column(Integer, default=0)
     filters: Mapped[dict] = mapped_column(JSONType, default=dict)
+    wa_template: Mapped[dict] = mapped_column(JSONType, default=dict)  # come Automation.wa_template
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str | None] = mapped_column(String(120))

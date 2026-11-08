@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Grid, Group, Modal, NumberInput, Paper, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Textarea, Title, UnstyledButton } from '@mantine/core'
-import { IconBrandWhatsapp, IconEdit, IconGift, IconLock, IconPlus, IconSend } from '@tabler/icons-react'
+import { IconBrandWhatsapp, IconEdit, IconGift, IconLock, IconPlus, IconRefresh, IconSend, IconShieldCheck } from '@tabler/icons-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
@@ -25,6 +25,13 @@ const PLACEHOLDERS: Record<string, string> = {
   prepagato_scadenza: '{cosa} {data} {resta}',
 }
 
+// stato dei modelli WhatsApp (app/marketing/wa_templates.py) e motivi di rifiuto di Meta più comuni
+const WA_COLOR: Record<string, string> = { approved: 'green', pending: 'yellow', rejected: 'red', errore: 'red', paused: 'orange', disabled: 'gray', cambiato: 'orange', da_inviare: 'gray' }
+const WA_REASON: Record<string, string> = {
+  INVALID_FORMAT: 'formato non valido (controlla segnaposto e a capo)', TAG_CONTENT_MISMATCH: 'la categoria non corrisponde al contenuto',
+  PROMOTIONAL: 'contenuto promozionale in un messaggio di servizio', ABUSIVE_CONTENT: 'contenuto non ammesso', SCAM: 'sospetta truffa',
+}
+
 export default function Marketing() {
   const { status } = useOutletContext<AppCtx>()
   const hasMk = status.menu.some((m: any) => m.code === 'marketing' && m.enabled)
@@ -36,6 +43,7 @@ export default function Marketing() {
   const [qr, setQr] = useState('')
   const [c, setC] = useState({ name: '', segment: 'tutti', body: '' })
   const [sending, setSending] = useState(false)
+  const [busyTpl, setBusyTpl] = useState('')
   const nav = useNavigate()
   const load = () => {
     appApi('/api/marketing/riepilogo').then((s) => { setSum(s); QRCode.toDataURL(s.booking_url, { margin: 1, width: 200, color: { dark: '#0b2147', light: '#ffffff' } }).then(setQr) }).catch(notifyError)
@@ -54,11 +62,25 @@ export default function Marketing() {
       return true
     } catch (e) { notifyError(e); return false }
   }
+  const live = sum.mode === 'cloud_api'
+  const tplCall = async (what: string, path: string, after?: (r: any) => void) => {
+    setBusyTpl(what)
+    try { const r = await appApi(path, { body: {} }); after?.(r); return r } catch (e) { notifyError(e) } finally { setBusyTpl('') }
+  }
+  const requestAll = () => tplCall('all', '/api/marketing/modelli/invia', (r) => {
+    setAutos(r.automations)
+    notifyOk(r.sent.length ? `Inviati a Meta ${r.sent.length} messaggi: di solito l'approvazione arriva in pochi minuti o qualche ora` : 'Nessun messaggio da inviare: sono già approvati o in approvazione')
+    r.errors.forEach((e: any) => notifyError(new Error(`${e.label}: ${e.error}`)))
+  })
+  const syncAll = () => tplCall('sync', '/api/marketing/modelli/aggiorna', (r) => {
+    setAutos(r.automations); appApi('/api/marketing/campagne').then(setCamps).catch(() => {})
+    notifyOk(r.changed ? `Stato aggiornato (${r.changed} cambiati)` : 'Nessuna novità da Meta')
+  })
   const send = async () => {
     setSending(true)
     try {
       const r = await appApi('/api/marketing/campagne', { body: c })
-      notifyOk(`Campagna inviata a ${r.recipients} clienti su WhatsApp`)
+      notifyOk(r.status === 'bozza' ? 'Messaggio inviato a Meta per l\'approvazione: quando è approvato premi «Invia» nell\'elenco delle campagne' : `Campagna inviata a ${r.recipients} clienti su WhatsApp`)
       setC({ name: '', segment: 'tutti', body: '' })
       load()
     } catch (e) { notifyError(e) } finally { setSending(false) }
@@ -82,6 +104,17 @@ export default function Marketing() {
           <Paper withBorder p="md">
             <Title order={4}>Messaggi automatici</Title>
             <Text size="sm" c="dimmed" mb="sm">Partono da soli su WhatsApp, una sola volta per cliente e occasione.</Text>
+            {live ? (
+              <Alert color="green" variant="light" mb="sm" icon={<IconShieldCheck />} title="Approvazione dei messaggi da parte di Meta">
+                <Text size="sm">Per scrivere per primo a una cliente WhatsApp vuole un messaggio approvato. Premi «Chiedi l'approvazione»: BluBeauty manda a Meta
+                  tutti i messaggi attivi. Finché non sono approvati arrivano solo alle clienti che hanno scritto al salone nelle ultime 24 ore.
+                  Se cambi un testo, va approvato di nuovo.</Text>
+                <Group mt="xs" gap="xs">
+                  <Button size="xs" leftSection={<IconShieldCheck size={14} />} loading={busyTpl === 'all'} onClick={requestAll} data-testid="chiedi-approvazione">Chiedi l'approvazione</Button>
+                  <Button size="xs" variant="light" leftSection={<IconRefresh size={14} />} loading={busyTpl === 'sync'} onClick={syncAll}>Aggiorna stato</Button>
+                </Group>
+              </Alert>
+            ) : <Text size="xs" c="dimmed" mb="sm">Quando colleghi WhatsApp Business qui comparirà l'approvazione dei messaggi da parte di Meta (vedi la guida in Impostazioni › WhatsApp).</Text>}
             <Stack gap={0}>
               {autos.map((a) => (
                 <Group key={a.id} py="sm" wrap="nowrap" align="flex-start" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }} opacity={a.available ? 1 : 0.55}>
@@ -90,8 +123,12 @@ export default function Marketing() {
                       <Text fw={600}>{a.label}</Text>
                       {a.offset != null && <Badge size="xs" variant="light">{a.kind === 'promemoria' ? `${a.offset} ore prima` : a.kind === 'prepagato_scadenza' ? `${a.offset} giorni prima` : `${a.offset} giorni`}</Badge>}
                       {!a.available && <Badge size="xs" color="gray" leftSection={<IconLock size={10} />}>pacchetto Salone</Badge>}
+                      {live && a.available && a.enabled && <Badge size="xs" variant="light" color={WA_COLOR[a.wa.status] ?? 'gray'}>{a.wa.label}</Badge>}
+                      {live && a.available && a.enabled && ['rejected', 'cambiato', 'da_inviare', 'errore'].includes(a.wa.status) &&
+                        <Button size="compact-xs" variant="subtle" loading={busyTpl === a.id} onClick={() => tplCall(a.id, `/api/marketing/automatici/${a.id}/modello`, (r) => setAutos(autos.map((x) => (x.id === a.id ? r : x))))}>Invia a Meta</Button>}
                     </Group>
                     <Text size="sm" c="dimmed" lineClamp={2}>{a.template}</Text>
+                    {live && a.wa.status === 'rejected' && <Text size="xs" c="red">Rifiutato da Meta{a.wa.reason ? `: ${WA_REASON[a.wa.reason] ?? a.wa.reason}` : ''}. Cambia il testo e invialo di nuovo.</Text>}
                   </div>
                   <Button size="compact-sm" variant="subtle" leftSection={<IconEdit size={14} />} disabled={!a.available} onClick={() => setEdit({ ...a })}>Testo</Button>
                   <Switch checked={a.enabled} disabled={!a.available} onChange={(e) => saveAuto(a, { enabled: e.currentTarget.checked })} aria-label={a.label} />
@@ -132,7 +169,8 @@ export default function Marketing() {
               </SimpleGrid>
               <Textarea label="Messaggio" autosize minRows={3} value={c.body} onChange={(e) => setC({ ...c, body: e.target.value })}
                 description="Segnaposto: {nome} {salone} {link} (link di prenotazione)" />
-              <Button mt="sm" leftSection={<IconSend size={16} />} onClick={send} loading={sending} disabled={!c.name || c.body.length < 10 || count === 0}>Invia a {count} clienti</Button>
+              <Button mt="sm" leftSection={<IconSend size={16} />} onClick={send} loading={sending} disabled={!c.name || c.body.length < 10 || count === 0}>{live ? `Chiedi l'approvazione e poi invia a ${count} clienti` : `Invia a ${count} clienti`}</Button>
+              {live && <Text size="xs" c="dimmed" mt={4}>Con WhatsApp Business ogni campagna va prima approvata da Meta (di solito minuti o poche ore), poi la invii dall'elenco.</Text>}
             </Grid.Col>
             <Grid.Col span={{ base: 12, md: 4 }}>
               <Text size="xs" c="dimmed" ta="center" tt="uppercase" fw={600} mb={6}>Anteprima</Text>
@@ -150,7 +188,15 @@ export default function Marketing() {
             <Title order={4} mb="sm">Campagne inviate</Title>
             <Table><Table.Tbody>
               {camps.map((x) => <Table.Tr key={x.id}><Table.Td><Text fw={600} size="sm">{x.name}</Text><Text size="xs" c="dimmed">{x.segment_label}</Text></Table.Td>
-                <Table.Td ta="right"><Text size="sm">{x.recipients} invii</Text><Text size="xs" c="dimmed">{x.sent_at ? new Date(x.sent_at).toLocaleDateString('it-IT') : 'bozza'}</Text></Table.Td></Table.Tr>)}
+                <Table.Td ta="right">{x.status === 'bozza' ? (
+                  <Group gap={6} justify="flex-end">
+                    <Badge size="sm" variant="light" color={WA_COLOR[x.wa.status] ?? 'gray'}>{x.wa.label}</Badge>
+                    {x.wa.status === 'approved' && <Button size="compact-sm" leftSection={<IconSend size={14} />} loading={busyTpl === x.id}
+                      onClick={() => tplCall(x.id, `/api/marketing/campagne/${x.id}/invia`, (r) => { notifyOk(`Campagna inviata a ${r.recipients} clienti`); load() })}>Invia</Button>}
+                    {['rejected', 'errore', 'da_inviare'].includes(x.wa.status) && <Button size="compact-sm" variant="light" loading={busyTpl === x.id}
+                      onClick={() => tplCall(x.id, `/api/marketing/campagne/${x.id}/modello`, () => load())}>Rimanda a Meta</Button>}
+                  </Group>
+                ) : <><Text size="sm">{x.recipients} invii</Text><Text size="xs" c="dimmed">{new Date(x.sent_at).toLocaleDateString('it-IT')}</Text></>}</Table.Td></Table.Tr>)}
               {camps.length === 0 && <Table.Tr><Table.Td><Text c="dimmed" size="sm">Nessuna campagna</Text></Table.Td></Table.Tr>}
             </Table.Tbody></Table>
           </Paper>
@@ -174,6 +220,7 @@ export default function Marketing() {
         <Stack>
           <Textarea autosize minRows={4} value={edit.template} onChange={(e) => setEdit({ ...edit, template: e.target.value })}
             description={`Segnaposto: {nome} {salone} {link} ${PLACEHOLDERS[edit.kind] ?? '{data} {ora} {servizio} {recensione} {giorni}'}`} />
+          {live && <Text size="xs" c="orange">Se cambi il testo va approvato di nuovo da Meta: fino ad allora parte come messaggio libero.</Text>}
           {edit.offset != null && <NumberInput label={edit.kind === 'promemoria' ? 'Ore prima dell\'appuntamento' : 'Giorni'} value={edit.offset} onChange={(v) => setEdit({ ...edit, offset: Number(v) })} min={0} />}
           <Button onClick={async () => { if (await saveAuto(edit, { template: edit.template, offset: edit.offset })) { setEdit(null); notifyOk('Testo salvato') } }}>Salva</Button>
         </Stack>

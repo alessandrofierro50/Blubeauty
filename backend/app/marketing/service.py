@@ -3,10 +3,11 @@
 È l'unico punto che scrive `messages`, `automations` e `campaigns`.
 
 WhatsApp Business Cloud API (Meta): i messaggi che partono dall'azienda fuori dalla finestra di 24 ore dall'ultimo
-messaggio del cliente devono usare un *modello approvato* da Meta. In questa versione si invia testo libero
-(`type: text`): va bene nella finestra di 24 ore e per i test; prima dell'uso reale i testi degli automatici vanno
-registrati come modelli nel WhatsApp Manager (vedi docs/WHATSAPP.md). Senza credenziali l'azienda resta in
-modalità «simulato»: i messaggi si registrano e si vedono nella conversazione, ma non partono.
+messaggio del cliente devono usare un *modello approvato* da Meta. Automatici e campagne si inviano col loro modello
+approvato (`type: template`, app/marketing/wa_templates.py: richiesta di approvazione da BluBeauty); senza modello
+approvato partono come testo libero (`type: text`), che Meta consegna solo entro le 24 ore. Vedi docs/WHATSAPP.md.
+Senza credenziali l'azienda resta in modalità «simulato»: i messaggi si registrano e si vedono nella conversazione,
+ma non partono.
 """
 
 import logging
@@ -134,8 +135,8 @@ def automation(db: Session, tenant_id, kind: str) -> Automation:
 
 
 # ---------------------------------------------------------------------------------------------------------- invio
-def _deliver(db: Session, tenant_id, channel: str, to: str, body: str) -> tuple[str, str | None, str | None]:
-    """(stato, id del provider, errore)."""
+def _deliver(db: Session, tenant_id, channel: str, to: str, body: str, template: dict | None = None) -> tuple[str, str | None, str | None]:
+    """(stato, id del provider, errore). Con `template` ({name, params}) invia il modello approvato invece del testo."""
     if channel != "whatsapp":
         return "simulato", None, None
     s = settings(db, tenant_id)
@@ -147,8 +148,10 @@ def _deliver(db: Session, tenant_id, channel: str, to: str, body: str) -> tuple[
         with httpx.Client(timeout=20, transport=_transport) as c:
             r = c.post(f"{GRAPH_URL}/{s.whatsapp_phone_id}/messages",
                        headers={"Authorization": f"Bearer {token}"},
-                       json={"messaging_product": "whatsapp", "to": to.lstrip("+"), "type": "text",
-                             "text": {"preview_url": True, "body": body}})
+                       json={"messaging_product": "whatsapp", "to": to.lstrip("+"), **(
+                           {"type": "template", "template": {"name": template["name"], "language": {"code": "it"}, "components": [
+                               {"type": "body", "parameters": [{"type": "text", "text": v} for v in template["params"]]}]}}
+                           if template else {"type": "text", "text": {"preview_url": True, "body": body}})})
         if r.status_code >= 400:
             err = r.json().get("error", {}).get("message") if r.headers.get("content-type", "").startswith("application/json") else r.text
             return "errore", None, (err or f"HTTP {r.status_code}")[:500]
@@ -158,14 +161,15 @@ def _deliver(db: Session, tenant_id, channel: str, to: str, body: str) -> tuple[
 
 
 def send(db: Session, tenant_id, *, kind: str, party: Party | None, body: str, to: str | None = None,
-         channel: str = "whatsapp", appointment_id=None, campaign_id=None, dedupe_key: str | None = None) -> Message | None:
+         channel: str = "whatsapp", appointment_id=None, campaign_id=None, dedupe_key: str | None = None,
+         template: dict | None = None) -> Message | None:
     """Registra e invia un messaggio. Con `dedupe_key` già usata non manda nulla (automatici una volta sola)."""
     to = normalize_phone(to or (party.mobile or party.phone if party else None))
     if not to:
         return None
     if dedupe_key and db.scalar(select(Message.id).where(Message.dedupe_key == dedupe_key)):
         return None
-    status, provider_id, error = _deliver(db, tenant_id, channel, to, body)
+    status, provider_id, error = _deliver(db, tenant_id, channel, to, body, template)
     m = Message(tenant_id=tenant_id, party_id=party.id if party else None, appointment_id=appointment_id,
                 campaign_id=campaign_id, channel=channel, kind=kind, to=to, body=body, status=status,
                 provider_id=provider_id, error=error, dedupe_key=dedupe_key,
@@ -182,9 +186,10 @@ def send_automatic(db: Session, tenant_id, kind: str, party: Party | None, value
     a = automation(db, tenant_id, kind)
     if not a.enabled:
         return None
-    body = fill(a.template, {"nome": party.first_name or party.name.split(" ")[-1], **values})
-    return send(db, tenant_id, kind=kind, party=party, body=body, channel=a.channel,
-                appointment_id=appointment_id, dedupe_key=dedupe_key)
+    from app.marketing import wa_templates
+    vals = {"nome": party.first_name or party.name.split(" ")[-1], **values}
+    return send(db, tenant_id, kind=kind, party=party, body=fill(a.template, vals), channel=a.channel,
+                appointment_id=appointment_id, dedupe_key=dedupe_key, template=wa_templates.for_send(a, vals))
 
 
 # --------------------------------------------------------------------------------------------------- segmenti
@@ -220,9 +225,10 @@ def send_campaign(db: Session, tenant_id, campaign: Campaign, values: dict) -> i
         return campaign.recipients
     sent = 0
     for p in segment_parties(db, campaign.segment):
-        body = fill(campaign.body, {"nome": p.first_name or p.name, **values})
-        if send(db, tenant_id, kind="campagna", party=p, body=body, channel=campaign.channel, campaign_id=campaign.id,
-                dedupe_key=f"campagna:{campaign.id}:{p.id}"):
+        from app.marketing import wa_templates
+        vals = {"nome": p.first_name or p.name, **values}
+        if send(db, tenant_id, kind="campagna", party=p, body=fill(campaign.body, vals), channel=campaign.channel, campaign_id=campaign.id,
+                dedupe_key=f"campagna:{campaign.id}:{p.id}", template=wa_templates.for_send(campaign, vals)):
             sent += 1
     campaign.status, campaign.recipients, campaign.sent_at = "inviata", sent, now()
     db.flush()

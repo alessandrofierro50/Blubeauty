@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Checkbox, Grid, Group, NumberInput, Paper, PasswordInput, SegmentedControl, Select, Stack, Text, TextInput, Textarea, Title } from '@mantine/core'
+import { ActionIcon, Anchor, Button, Checkbox, Grid, Group, NumberInput, Paper, PasswordInput, SegmentedControl, Select, Stack, Text, TextInput, Textarea, Title } from '@mantine/core'
 import { IconCopy, IconPlus, IconTrash } from '@tabler/icons-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
@@ -122,10 +122,13 @@ export default function AgendaSettings() {
                 <SegmentedControl fullWidth value={wa.whatsapp_mode} onChange={(v) => setWa({ ...wa, whatsapp_mode: v })}
                   data={[{ value: 'simulato', label: 'Prova (simulato)' }, { value: 'cloud_api', label: 'WhatsApp Business' }]} />
                 <Text size="xs" c="dimmed" mt="xs">In prova i messaggi si vedono nelle conversazioni ma non partono. Con WhatsApp Business (Cloud API di Meta) partono davvero dal numero del salone.</Text>
+                <Anchor size="sm" href="/guide/BluBeauty-Guida-WhatsApp.pdf" target="_blank" mt={4} display="block">📄 Guida: collegare WhatsApp con la SIM del salone (passo passo)</Anchor>
                 {wa.whatsapp_mode === 'cloud_api' && (
                   <Stack gap="xs" mt="sm">
                     <TextInput label="Phone number ID" value={wa.whatsapp_phone_id ?? ''} onChange={(e) => setWa({ ...wa, whatsapp_phone_id: e.target.value })} />
                     <PasswordInput label="Token di accesso" placeholder={wa.whatsapp_token_set ? 'salvato · lascia vuoto per non cambiarlo' : ''} value={token} onChange={(e) => setToken(e.target.value)} />
+                    <TextInput label="ID dell'account WhatsApp Business (WABA ID)" description="Serve per far approvare i messaggi da Meta direttamente da BluBeauty"
+                      value={wa.whatsapp_waba_id ?? ''} onChange={(e) => setWa({ ...wa, whatsapp_waba_id: e.target.value.replace(/\D/g, '') })} />
                   </Stack>
                 )}
                 <TextInput mt="sm" label="Link per le recensioni Google" placeholder="https://g.page/r/…/review" value={wa.review_url ?? ''} onChange={(e) => setWa({ ...wa, review_url: e.target.value })} />

@@ -38,7 +38,9 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 ## Modulo Marketing (`backend/app/marketing/`, frontend `src/pages/marketing/`)
 - `service.py` è l'unico punto che scrive `messages`, `automations`, `campaigns`. Invio WhatsApp: modalità `simulato`
   (registra senza inviare) o `cloud_api` (WhatsApp Business Cloud API di Meta, token cifrato con SECRET_KEY; `_transport`
-  httpx nei test). Fuori dalla finestra di 24 ore Meta richiede modelli approvati: vedi `docs/WHATSAPP.md`.
+  httpx nei test). Fuori dalla finestra di 24 ore Meta richiede **modelli approvati**: `wa_templates.py` (scrive solo i campi
+  `wa_template`) li crea dai testi (`bb_<tipo>_v<n>`, `{nome}`→`{{1}}`), li manda a Meta (WABA ID nelle impostazioni), ne legge lo
+  stato e invia `type: template`; campagne in bozza finché non approvate. Guida PDF per il salone in `public/guide/`. Vedi `docs/WHATSAPP.md`.
 - Automatici: conferma, promemoria (job orario al minuto 11), disdetta → pacchetto AGENDA; grazie + recensione (all'incasso),
   richiamo (giorni del servizio), compleanno, clienti persi (job alle 9:37) → modulo `marketing`. Niente doppioni:
   indice unico `messages(tenant_id, dedupe_key)`. Campagne e automatici di marketing SOLO a chi ha il consenso marketing.
@@ -147,7 +149,9 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
       online pubblica, incasso con registratore/fattura, interfaccia, logo e palette BluCode, demo, test (`test_agenda.py`).
 - [x] 2026-10-31 — raccolta punti e tessere, ricevuta non fiscale (termica 80 mm / registratore), modalità semplice.
 - [ ] Prezzi definitivi dei pacchetti (decisione del titolare) e pagina del sito (`content.py`).
-- [ ] WhatsApp Business: numero del salone, modelli approvati da Meta per promemoria/marketing (`docs/WHATSAPP.md`).
+- [x] 2026-11-08 — modelli WhatsApp: richiesta di approvazione a Meta da BluBeauty, stato, invio col modello, campagne in bozza;
+      guida PDF «Collegare WhatsApp» (migrazione 0029).
+- [ ] WhatsApp: prova reale con un numero del salone; webhook per ricevere le risposte delle clienti e lo stato di consegna.
 - [ ] Collaudo con registratore telematico vero (Epson/Custom) e stampante termica in un salone pilota.
 - [ ] Casella `blubeauty@blucodeinformatica.it` da creare su Aruba; installazione sulla VPS (DNS, nginx, certbot).
 - [x] 2026-11-01 — buoni regalo (residuo, biglietto, WhatsApp, pagina pubblica) e pacchetti di sedute a scalare.

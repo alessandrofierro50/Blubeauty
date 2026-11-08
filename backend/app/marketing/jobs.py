@@ -122,8 +122,25 @@ def _each(session_factory, on: date, module: str, fn) -> dict:
     return result
 
 
+def sync_templates(db: Session, tenant_id) -> int:
+    """Stato dei modelli WhatsApp in approvazione (ogni ora, con i promemoria): solo con WhatsApp Business collegato."""
+    from app.marketing import wa_templates
+    from app.marketing.models import Automation, Campaign
+    st = msg.settings(db, tenant_id)
+    if st.whatsapp_mode != "cloud_api" or not st.whatsapp_waba_id or not st.whatsapp_token_enc:
+        return 0
+    objs = list(db.scalars(select(Automation))) + list(db.scalars(select(Campaign).where(Campaign.status == "bozza")))
+    if not any((o.wa_template or {}).get("status") == "pending" for o in objs):
+        return 0
+    try:
+        return wa_templates.sync(db, tenant_id)
+    except Exception:  # noqa: BLE001
+        log.exception("Stato dei modelli WhatsApp non aggiornato")
+        return 0
+
+
 def run_reminders(session_factory, on: date) -> dict:
-    return _each(session_factory, on, "agenda", lambda db, tid: reminders(db, tid))
+    return _each(session_factory, on, "agenda", lambda db, tid: reminders(db, tid) + sync_templates(db, tid))
 
 
 def run_daily_marketing(session_factory, on: date) -> dict:
