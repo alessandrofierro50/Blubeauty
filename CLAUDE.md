@@ -109,6 +109,14 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   (Oggi, nuovo appuntamento a passi, incasso semplice `Pay.tsx`, stampe 80 mm e tessera `Prints.tsx`).
 - Ricerca sul marketing dei concorrenti: `docs/MARKETING-CONCORRENTI.md`.
 
+## Video di aiuto («Guarda il video», 2026-11-12; progetto nel documento Drive «BluBeauty – Video di aiuto nelle schermate»)
+- `VideoButton` / `PageTitle video="…"` (components.tsx) apre il tutorial della pagina in una finestra (YouTube/Vimeo
+  incorporati, altrimenti file .mp4); senza indirizzo mostra «in preparazione». Otto schermate: agenda, clienti e scheda
+  cliente, servizi, cassa (barra blu), impostazioni del salone (riquadro «Prenotazione online»), articoli e scheda articolo,
+  incasso dell'appuntamento (`Pay.tsx`), buoni e pacchetti. Chiavi e titoli in `app/saas/help_videos.py`.
+- Indirizzi dal super admin (Impostazioni › Video di aiuto, `GET/PUT /api/admin/video-aiuto`, `saas_settings.help_videos`),
+  letti da `GET /api/app/video-aiuto`. Test: `tests/test_video_aiuto.py`. DA FARE: copioni, voce, registrazione dei video.
+
 ## Periferiche, fattura elettronica, super admin, Console (ereditati da BluGest, identici)
 - BluBeauty Agent: `agent/blubeauty_agent.py` (driver epson_rt, custom_rt, ESC/POS, simulatori); coda `device_jobs`;
   un lavoro "inviato" non si rimanda da solo. **Custom RT = formato collaudato di BluOrderScan** sul KUBE II-F (un XML,

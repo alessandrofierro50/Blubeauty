@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 
 import { appApi } from '../../api'
-import { Loading, PageTitle, notifyError, notifyOk } from '../../components'
+import { Loading, PageTitle, VideoButton, notifyError, notifyOk } from '../../components'
 import type { AppCtx } from '../app/AppLayout'
 import { DAYS } from './lib'
 
@@ -82,7 +82,7 @@ export default function AgendaSettings() {
               <NumberInput mt="sm" w={220} label="Intervallo dell'agenda (minuti)" value={s.slot_minutes} onChange={(v) => setS({ ...s, slot_minutes: Number(v) })} min={5} max={60} step={5} />
             </Paper>
             <Paper withBorder p="md">
-              <Title order={4} mb="sm">Prenotazione online</Title>
+              <Group justify="space-between" mb="sm"><Title order={4}>Prenotazione online</Title><VideoButton video="prenotazione_whatsapp" /></Group>
               <Checkbox mb="sm" label="I clienti possono prenotare dallo smartphone" checked={s.online_enabled} onChange={(e) => setS({ ...s, online_enabled: e.target.checked })} />
               <Group grow>
                 <NumberInput label="Anticipo minimo (minuti)" value={s.online_lead_minutes} onChange={(v) => setS({ ...s, online_lead_minutes: Number(v) })} min={0} step={15} />

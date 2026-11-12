@@ -74,7 +74,7 @@ export default function Agenda() {
 
   return (
     <>
-      <PageTitle title="Agenda" subtitle={`${longDay(day)} · ${visible.length} appuntamenti · ${fmtEuro(totalDay)}`}
+      <PageTitle title="Agenda" video="agenda" subtitle={`${longDay(day)} · ${visible.length} appuntamenti · ${fmtEuro(totalDay)}`}
         right={<Group>
           <ActionIcon variant="default" size="lg" onClick={() => shift(-1)} aria-label="Giorno prima"><IconChevronLeft size={18} /></ActionIcon>
           <Button variant="default" onClick={() => setDay(new Date())}>Oggi</Button>

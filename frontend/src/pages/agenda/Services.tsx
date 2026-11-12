@@ -29,7 +29,7 @@ export default function Services() {
   }
   return (
     <>
-      <PageTitle title="Servizi, operatori e cabine" subtitle="Listino, durate, tempi di posa e chi esegue ogni servizio" />
+      <PageTitle title="Servizi, operatori e cabine" video="servizi" subtitle="Listino, durate, tempi di posa e chi esegue ogni servizio" />
       <Tabs defaultValue="servizi">
         <Tabs.List mb="md">
           <Tabs.Tab value="servizi">Servizi ({services.length})</Tabs.Tab>

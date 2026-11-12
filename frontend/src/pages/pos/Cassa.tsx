@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { appApi } from '../../api'
-import { Logo, notifyError } from '../../components'
+import { Logo, VideoButton, notifyError } from '../../components'
 import { PRINT_CSS, ReceiptPrint, SessionPrint } from './Receipt'
 import { computePromos, promoLabel } from './promos'
 import { DisplayState, displayChannel } from './Display'
@@ -482,6 +482,7 @@ function Till({ reg, cat, me, session, setSession, online, setOnline, outbox, se
           <Text fw={700}>{reg.name}</Text>
           <Text size="sm" opacity={0.8}>{me?.user?.full_name} · aperta {new Date(session.opened_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</Text>
           {!online && <Badge color="orange" leftSection={<IconCloudOff size={12} />}>offline</Badge>}
+          <VideoButton video="cassa" variant="white" />
           {outbox.length > 0 && <Badge color={errors ? 'red' : 'yellow'} style={{ cursor: 'pointer' }} onClick={() => setModal('outbox')}>{outbox.length} da inviare{errors ? ` · ${errors} con errore` : ''}</Badge>}
         </Group>
         <Group gap={4} wrap="nowrap">

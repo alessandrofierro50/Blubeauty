@@ -857,6 +857,30 @@ def set_lifecycle(body: LifecycleUpdate, admin: SuperAdmin = Depends(get_admin),
     return lifecycle_settings(db)
 
 
+class HelpVideosUpdate(BaseModel):
+    urls: dict[str, str | None]
+
+
+@router.get("/video-aiuto")
+def get_help_videos(admin: SuperAdmin = Depends(get_admin), db: Session = Depends(get_db)):
+    """Video di aiuto delle schermate (pulsante «Guarda il video»), uguali per tutte le aziende."""
+    from app.saas.help_videos import help_videos
+
+    return help_videos(db)
+
+
+@router.put("/video-aiuto")
+def set_help_videos(body: HelpVideosUpdate, admin: SuperAdmin = Depends(get_admin), db: Session = Depends(get_db)):
+    from app.saas.help_videos import save_help_videos
+
+    try:
+        out = save_help_videos(db, body.urls)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+    audit(db, "saas_settings", "video_aiuto", admin_id=admin.id, after={v["key"]: v["url"] for v in out})
+    return out
+
+
 @router.get("/email-log")
 def email_log(limit: int = 100, admin: SuperAdmin = Depends(get_admin), db: Session = Depends(get_db)):
     rows = db.execute(

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { appApi, fmtEuro } from '../../api'
-import { Loading, notifyError, notifyOk } from '../../components'
+import { Loading, VideoButton, notifyError, notifyOk } from '../../components'
 import AttachmentsEditor from './AttachmentsEditor'
 import ImagesEditor from './ImagesEditor'
 import { A, categoryOptions, dec, num, opts, useLookups } from './shared'
@@ -109,6 +109,7 @@ export default function ItemEditor() {
           <Title order={2}>{isNew ? 'Nuovo articolo' : it.description}</Title>
           {!isNew && <Badge variant="outline" ff="monospace">{it.code}</Badge>}
           {!it.active && <Badge color="gray">disattivato</Badge>}
+          <VideoButton video="articoli" />
         </Group>
         <Group>
           {!isNew && (

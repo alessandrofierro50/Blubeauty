@@ -10,19 +10,21 @@ import { PaymentSettings } from './Payments'
 export default function Settings() {
   return (
     <>
-      <PageTitle title="Impostazioni" subtitle="Pacchetti, avvisi di scadenza, modelli email, pagamenti e il tuo account" />
+      <PageTitle title="Impostazioni" subtitle="Pacchetti, avvisi di scadenza, modelli email, pagamenti, video di aiuto e il tuo account" />
       <Tabs defaultValue={new URLSearchParams(window.location.search).get('tab') ?? 'pacchetti'}>
         <Tabs.List mb="md">
           <Tabs.Tab value="pacchetti">Pacchetti</Tabs.Tab>
           <Tabs.Tab value="avvisi">Avvisi di scadenza</Tabs.Tab>
           <Tabs.Tab value="modelli">Modelli email</Tabs.Tab>
           <Tabs.Tab value="pagamenti">Pagamenti</Tabs.Tab>
+          <Tabs.Tab value="video">Video di aiuto</Tabs.Tab>
           <Tabs.Tab value="account">Il mio account</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="pacchetti"><Plans /></Tabs.Panel>
         <Tabs.Panel value="avvisi"><Rules /></Tabs.Panel>
         <Tabs.Panel value="modelli"><Templates /></Tabs.Panel>
         <Tabs.Panel value="pagamenti"><PaymentSettings /></Tabs.Panel>
+        <Tabs.Panel value="video"><HelpVideos /></Tabs.Panel>
         <Tabs.Panel value="account"><Account /></Tabs.Panel>
       </Tabs>
     </>
@@ -141,6 +143,32 @@ function Templates() {
         </Paper>
       ))}
     </Stack>
+  )
+}
+
+function HelpVideos() {
+  const [rows, setRows] = useState<{ key: string; title: string; screen: string; url: string | null }[] | null>(null)
+  useEffect(() => { adminApi('/video-aiuto').then(setRows).catch(notifyError) }, [])
+  if (!rows) return <Loading />
+  async function save() {
+    try {
+      setRows(await adminApi('/video-aiuto', { method: 'PUT', body: { urls: Object.fromEntries(rows!.map((r) => [r.key, r.url || null])) } }))
+      notifyOk('Video salvati')
+    } catch (e) { notifyError(e) }
+  }
+  return (
+    <Paper withBorder p="md" maw={900}>
+      <Stack>
+        <Text size="sm">Ogni schermata ha il pulsante «Guarda il video», che apre il tutorial in una finestra sopra la pagina.
+          Incolla l'indirizzo del video: YouTube (anche non in elenco), Vimeo o un file .mp4 sul server. Vale per tutte le aziende;
+          finché è vuoto il cliente vede «Il video di questa pagina è in preparazione».</Text>
+        {rows.map((r, i) => (
+          <TextInput key={r.key} label={r.title} description={`Schermata: ${r.screen}`} placeholder="https://youtu.be/…"
+            value={r.url ?? ''} onChange={(e) => { const v = e.currentTarget.value; setRows(rows.map((x, j) => (j === i ? { ...x, url: v } : x))) }} />
+        ))}
+        <Group justify="flex-end"><Button onClick={save}>Salva</Button></Group>
+      </Stack>
+    </Paper>
   )
 }
 

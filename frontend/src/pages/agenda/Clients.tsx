@@ -24,7 +24,7 @@ export function ClientsList() {
   }, [q])
   return (
     <>
-      <PageTitle title="Clienti" subtitle="Schede, consensi, schede tecniche e conversazioni WhatsApp"
+      <PageTitle title="Clienti" video="scheda_cliente" subtitle="Schede, consensi, schede tecniche e conversazioni WhatsApp"
         right={<Button leftSection={<IconPlus size={16} />} onClick={() => setOpen(true)}>Nuovo cliente</Button>} />
       <TextInput leftSection={<IconSearch size={16} />} placeholder="Cerca per nome, cellulare o email" value={q} onChange={(e) => setQ(e.target.value)} mb="md" />
       {!rows ? <Loading /> : (
@@ -101,7 +101,7 @@ export function ClientDetail() {
   const patch = async (body: any) => { try { setC({ ...c, ...(await appApi(`/api/agenda/clienti/${id}`, { method: 'PATCH', body })) }) } catch (e) { notifyError(e) } }
   return (
     <>
-      <PageTitle title={c.name} subtitle={[c.mobile, c.email].filter(Boolean).join(' · ') || 'Nessun contatto'}
+      <PageTitle title={c.name} video="scheda_cliente" subtitle={[c.mobile, c.email].filter(Boolean).join(' · ') || 'Nessun contatto'}
         right={<Group>
           <Button variant="default" onClick={() => nav(`/soggetti/${c.id}`)}>Dati di fatturazione</Button>
           <Button leftSection={<IconCalendarPlus size={16} />} onClick={() => nav(`/nuovo?cliente=${c.id}`)}>Nuovo appuntamento</Button>

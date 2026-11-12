@@ -45,7 +45,7 @@ export default function Prepaid() {
   const [stamp, setStamp] = useState(0)
   return (
     <>
-      <PageTitle title="Buoni regalo e pacchetti" subtitle="Buono regalo: ricevuta non fiscale alla vendita, scontrino quando si usa. Pacchetti: scontrino alla vendita, sedute scalate a ogni incasso"
+      <PageTitle title="Buoni regalo e pacchetti" video="buoni_abbonamenti" subtitle="Buono regalo: ricevuta non fiscale alla vendita, scontrino quando si usa. Pacchetti: scontrino alla vendita, sedute scalate a ogni incasso"
         right={<Group>
           <Button size="md" leftSection={<IconGift size={18} />} onClick={() => setSell('buono')} data-testid="nuovo-buono">Nuovo buono regalo</Button>
           <Button size="md" variant="light" leftSection={<IconPackage size={18} />} onClick={() => setSell('pacchetto')}>Vendi un pacchetto</Button>

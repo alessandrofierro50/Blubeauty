@@ -32,7 +32,7 @@ export default function Items() {
 
   return (
     <>
-      <PageTitle title="Articoli" subtitle={data ? `${data.total} articoli` : undefined}
+      <PageTitle title="Articoli" video="articoli" subtitle={data ? `${data.total} articoli` : undefined}
         right={<Group><ImportExport kind="articoli" onDone={load} />
           <Button leftSection={<IconPlus size={16} />} onClick={() => nav('/articoli/nuovo')}>Nuovo articolo</Button></Group>} />
       <Group mb="md" wrap="wrap" align="flex-end">

@@ -4,7 +4,7 @@ import { IconCash, IconCheck, IconCreditCard, IconDeviceDesktop, IconGift, IconP
 import { useEffect, useState } from 'react'
 
 import { ApiError, appApi, fmtEuro } from '../../api'
-import { notifyError, notifyOk } from '../../components'
+import { VideoButton, notifyError, notifyOk } from '../../components'
 import type { Appointment } from '../agenda/lib'
 
 const BIG = { size: 'xl', radius: 'lg', h: 72, fz: 20 } as const
@@ -106,7 +106,7 @@ export function PayModal({ appt, onClose, onDone }: { appt: Appointment; onClose
   }
 
   return (
-    <Modal opened onClose={onClose} title={<Text fw={700} fz="lg">Incassa · {appt.client ?? 'Cliente'}</Text>} size="lg" radius="lg" centered>
+    <Modal opened onClose={onClose} title={<Group gap="sm"><Text fw={700} fz="lg">Incassa · {appt.client ?? 'Cliente'}</Text><VideoButton video="chiusura_conto" /></Group>} size="lg" radius="lg" centered>
       <Stack>
         <Paper withBorder radius="lg" p="md">
           {appt.items.map((it) => <Group key={it.id} justify="space-between"><Text fz="lg">{it.service}</Text><Text fz="lg">{fmtEuro(it.price)}</Text></Group>)}
