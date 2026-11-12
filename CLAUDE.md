@@ -111,11 +111,13 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
 
 ## Video di aiuto («Guarda il video», 2026-11-12; progetto nel documento Drive «BluBeauty – Video di aiuto nelle schermate»)
 - `VideoButton` / `PageTitle video="…"` (components.tsx) apre il tutorial della pagina in una finestra (YouTube/Vimeo
-  incorporati, altrimenti file .mp4); senza indirizzo mostra «in preparazione». Otto schermate: agenda, clienti e scheda
+  incorporati, altrimenti file .mp4). I video della prima serie (2026-11-12, voce Aida, approvati dal titolare) sono INCLUSI:
+  `frontend/public/video-aiuto/NN-*.mp4` serviti dal sito (`help_videos.DEFAULT_FILES`); sorgenti, voci e script per rigirarli
+  nel repository di progetto, `blubeauty/video-aiuto/registrazione/`. Otto schermate: agenda, clienti e scheda
   cliente, servizi, cassa (barra blu), impostazioni del salone (riquadro «Prenotazione online»), articoli e scheda articolo,
   incasso dell'appuntamento (`Pay.tsx`), buoni e pacchetti. Chiavi e titoli in `app/saas/help_videos.py`.
-- Indirizzi dal super admin (Impostazioni › Video di aiuto, `GET/PUT /api/admin/video-aiuto`, `saas_settings.help_videos`),
-  letti da `GET /api/app/video-aiuto`. Test: `tests/test_video_aiuto.py`. DA FARE: copioni, voce, registrazione dei video.
+- Il super admin può sostituirli con altri indirizzi (Impostazioni › Video di aiuto, `GET/PUT /api/admin/video-aiuto`,
+  `saas_settings.help_videos`; vuoto = video incluso), letti da `GET /api/app/video-aiuto`. Test: `tests/test_video_aiuto.py`.
 
 ## Periferiche, fattura elettronica, super admin, Console (ereditati da BluGest, identici)
 - BluBeauty Agent: `agent/blubeauty_agent.py` (driver epson_rt, custom_rt, ESC/POS, simulatori); coda `device_jobs`;

@@ -54,10 +54,11 @@ def app_status(ctx: TenantContext = Depends(get_tenant_ctx)):
 
 @router.get("/video-aiuto")
 def help_videos_for_app(ctx: TenantContext = Depends(get_tenant_ctx)):
-    """Video del pulsante «Guarda il video»: {chiave: {titolo, indirizzo}} (indirizzo nullo = in preparazione)."""
+    """Video del pulsante «Guarda il video»: {chiave: {titolo, indirizzo}}; indirizzo del pannello o video incluso
+    (nullo = in preparazione)."""
     from app.saas.help_videos import help_videos
 
-    return {v["key"]: {"title": v["title"], "url": v["url"]} for v in help_videos(ctx.db)}
+    return {v["key"]: {"title": v["title"], "url": v["effective_url"]} for v in help_videos(ctx.db)}
 
 
 @router.get("/abbonamento")

@@ -145,7 +145,7 @@ export function VideoButton({ video, size = 'xs', variant = 'light' }: { video: 
         onClick={() => setOpen(true)} aria-label="Guarda il video di questa pagina">
         Guarda il video
       </Button>
-      <Modal opened={open} onClose={() => setOpen(false)} size="xl" centered zIndex={400}
+      <Modal opened={open} onClose={() => setOpen(false)} size={embed ? "80%" : "md"} centered zIndex={400}
         title={<Text fw={700}>{info?.title ?? 'Video di aiuto'}</Text>}>
         {info === undefined ? <Loading /> : embed ? (
           <AspectRatio ratio={16 / 9}>

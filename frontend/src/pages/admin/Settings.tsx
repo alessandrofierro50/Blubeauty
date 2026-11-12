@@ -147,7 +147,7 @@ function Templates() {
 }
 
 function HelpVideos() {
-  const [rows, setRows] = useState<{ key: string; title: string; screen: string; url: string | null }[] | null>(null)
+  const [rows, setRows] = useState<{ key: string; title: string; screen: string; url: string | null; default_url: string | null }[] | null>(null)
   useEffect(() => { adminApi('/video-aiuto').then(setRows).catch(notifyError) }, [])
   if (!rows) return <Loading />
   async function save() {
@@ -160,10 +160,11 @@ function HelpVideos() {
     <Paper withBorder p="md" maw={900}>
       <Stack>
         <Text size="sm">Ogni schermata ha il pulsante «Guarda il video», che apre il tutorial in una finestra sopra la pagina.
-          Incolla l'indirizzo del video: YouTube (anche non in elenco), Vimeo o un file .mp4 sul server. Vale per tutte le aziende;
-          finché è vuoto il cliente vede «Il video di questa pagina è in preparazione».</Text>
+          I video sono già inclusi in BluBeauty: lascia il campo vuoto per usarli. Per sostituirne uno incolla l'indirizzo di un altro video:
+          YouTube (anche non in elenco), Vimeo o un file .mp4. Vale per tutte le aziende.</Text>
         {rows.map((r, i) => (
-          <TextInput key={r.key} label={r.title} description={`Schermata: ${r.screen}`} placeholder="https://youtu.be/…"
+          <TextInput key={r.key} label={r.title} description={`Schermata: ${r.screen}${r.url ? '' : r.default_url ? ' · ora: video incluso in BluBeauty' : ' · ora: in preparazione'}`}
+            placeholder={r.default_url ? `Video incluso (${r.default_url})` : 'https://youtu.be/…'}
             value={r.url ?? ''} onChange={(e) => { const v = e.currentTarget.value; setRows(rows.map((x, j) => (j === i ? { ...x, url: v } : x))) }} />
         ))}
         <Group justify="flex-end"><Button onClick={save}>Salva</Button></Group>

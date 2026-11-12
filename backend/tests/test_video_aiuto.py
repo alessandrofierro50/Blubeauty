@@ -8,6 +8,7 @@ def test_video_aiuto(client, admin_headers):
     assert r.status_code == 200
     videos = r.json()
     assert len(videos) == 8 and all(v["url"] is None for v in videos)
+    assert all(v["effective_url"] == v["default_url"] and v["default_url"].startswith("/video-aiuto/") for v in videos)
 
     r = client.put("/api/admin/video-aiuto", headers=admin_headers,
                    json={"urls": {"agenda": " https://youtu.be/abc123 ", "cassa": "", "sconosciuto": "https://x.it/v.mp4"}})
@@ -21,8 +22,9 @@ def test_video_aiuto(client, admin_headers):
     h = activate_and_login(client, make_tenant(client, admin_headers, "Salone Video", plan="SALONE"))
     app = client.get("/api/app/video-aiuto", headers=h).json()
     assert app["agenda"]["url"] == "https://youtu.be/abc123"
-    assert app["buoni_abbonamenti"] == {"title": "Gestione di abbonamenti e buoni", "url": None}
+    # senza indirizzo nel pannello vale il video incluso in BluBeauty
+    assert app["buoni_abbonamenti"] == {"title": "Gestione di abbonamenti e buoni", "url": "/video-aiuto/08-buoni-abbonamenti.mp4"}
 
-    # svuotare un indirizzo lo riporta «in preparazione»
+    # svuotare un indirizzo riporta il video incluso
     client.put("/api/admin/video-aiuto", headers=admin_headers, json={"urls": {"agenda": None}})
-    assert client.get("/api/app/video-aiuto", headers=h).json()["agenda"]["url"] is None
+    assert client.get("/api/app/video-aiuto", headers=h).json()["agenda"]["url"] == "/video-aiuto/01-agenda.mp4"

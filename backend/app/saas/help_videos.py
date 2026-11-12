@@ -2,7 +2,8 @@
 
 Gli indirizzi dei video (YouTube non in elenco, Vimeo o un file .mp4 sul server) si inseriscono dal pannello del super
 amministratore (Impostazioni › Video di aiuto) e sono salvati in `saas_settings` sotto la chiave `help_videos`:
-valgono per tutte le aziende. Un video senza indirizzo appare come «in preparazione». Progetto: documento Drive
+valgono per tutte le aziende. Senza indirizzo vale il video incluso in BluBeauty (`frontend/public/video-aiuto/`, servito
+dal sito stesso: `DEFAULT_FILES`); senza nemmeno quello il video appare come «in preparazione». Progetto: documento Drive
 «BluBeauty – Video di aiuto nelle schermate» (prima serie di otto video)."""
 
 from urllib.parse import urlparse
@@ -25,6 +26,23 @@ VIDEOS: dict[str, tuple[str, str]] = {
     "buoni_abbonamenti": ("Gestione di abbonamenti e buoni", "Buoni e pacchetti"),
 }
 
+# video inclusi in BluBeauty (girati il 2026-11-12, voce Aida; sorgenti e script nel repository di progetto, blubeauty/video-aiuto)
+DEFAULT_FILES: dict[str, str] = {
+    "agenda": "01-agenda.mp4",
+    "scheda_cliente": "02-scheda-cliente.mp4",
+    "servizi": "03-servizi-listini.mp4",
+    "cassa": "04-cassa-scontrino.mp4",
+    "prenotazione_whatsapp": "05-prenotazione-whatsapp.mp4",
+    "articoli": "06-articoli.mp4",
+    "chiusura_conto": "07-chiusura-conto.mp4",
+    "buoni_abbonamenti": "08-buoni-abbonamenti.mp4",
+}
+
+
+def default_url(key: str) -> str | None:
+    f = DEFAULT_FILES.get(key)
+    return f"/video-aiuto/{f}" if f else None
+
 
 def _stored(db: Session) -> dict:
     row = db.get(SaasSetting, SETTINGS_KEY)
@@ -33,7 +51,9 @@ def _stored(db: Session) -> dict:
 
 def help_videos(db: Session) -> list[dict]:
     urls = _stored(db)
-    return [{"key": k, "title": t, "screen": s, "url": urls.get(k) or None} for k, (t, s) in VIDEOS.items()]
+    """url = indirizzo scelto nel pannello (None se non c'è); effective_url = quello che apre il pulsante."""
+    return [{"key": k, "title": t, "screen": s, "url": urls.get(k) or None, "default_url": default_url(k),
+             "effective_url": urls.get(k) or default_url(k)} for k, (t, s) in VIDEOS.items()]
 
 
 def clean_url(url: str | None) -> str | None:
