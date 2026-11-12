@@ -10,6 +10,7 @@ import type { AppCtx } from '../app/AppLayout'
 import { type Appointment, CHANNEL, type Service, type Staff, STATUS, dayKey, hhmm, longDay, minutesOf } from './lib'
 import { WhatsAppChat } from './WhatsAppChat'
 import { PayModal, ReceiptButtons } from '../salone/Pay'
+import { MonthView, WeekView, addDays, daysInMonth, firstOfMonth, monday } from './AgendaViews'
 
 const PX = 1.5 // pixel per minuto
 
@@ -41,23 +42,28 @@ export default function Agenda() {
   const has = (code: string) => status.menu.some((m: any) => m.code === code && m.enabled)
   const [params, setParams] = useSearchParams()
   const day = params.get('giorno') ? new Date(params.get('giorno') + 'T12:00:00') : new Date()
-  const setDay = (d: Date) => setParams({ giorno: isoDate(d) })
+  // vista: giorno (una colonna per operatore), settimana (7 giorni), mese (griglia del mese)
+  const vista = (['settimana', 'mese'].includes(params.get('vista') ?? '') ? params.get('vista') : 'giorno') as 'giorno' | 'settimana' | 'mese'
+  const setDay = (d: Date, v: string = vista) => setParams(v === 'giorno' ? { giorno: isoDate(d) } : { giorno: isoDate(d), vista: v })
+  const [opFilter, setOpFilter] = useState<string | null>(null)
   const [settings, setSettings] = useState<any>(null)
   const [staff, setStaff] = useState<Staff[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [appts, setAppts] = useState<Appointment[] | null>(null)
-  const [newAt, setNewAt] = useState<{ staffId?: string; time?: string } | null>(null)
+  const [newAt, setNewAt] = useState<{ staffId?: string; time?: string; date?: Date } | null>(null)
   const [openId, setOpenId] = useState<string | null>(params.get('apri'))
   const nav = useNavigate()
 
-  const load = () => appApi(`/api/agenda/appuntamenti?day=${isoDate(day)}`).then(setAppts).catch(notifyError)
+  const rangeStart = vista === 'settimana' ? monday(day) : vista === 'mese' ? firstOfMonth(day) : day
+  const rangeDays = vista === 'settimana' ? 7 : vista === 'mese' ? daysInMonth(day) : 1
+  const load = () => appApi(`/api/agenda/appuntamenti?day=${isoDate(rangeStart)}&days=${rangeDays}`).then(setAppts).catch(notifyError)
   // orario effettivo del giorno (turni, settimane alterne, ferie, permessi, chiusure)
   const [plan, setPlan] = useState<Record<string, { hours: string[][]; absence: any }>>({})
   useEffect(() => {
     Promise.all([appApi('/api/agenda/impostazioni'), appApi('/api/agenda/operatori'), appApi('/api/agenda/servizi')])
       .then(([s, st, sv]) => { setSettings(s); setStaff(st.filter((x: Staff) => x.active)); setServices(sv) }).catch(notifyError)
   }, [])
-  useEffect(() => { setAppts(null); load(); appApi(`/api/agenda/orari?giorno=${isoDate(day)}`).then(setPlan).catch(() => setPlan({})) }, [isoDate(day)])
+  useEffect(() => { setAppts(null); load(); if (vista === 'giorno') appApi(`/api/agenda/orari?giorno=${isoDate(day)}`).then(setPlan).catch(() => setPlan({})) }, [isoDate(rangeStart), vista])
 
   const hours = settings?.opening_hours?.[dayKey(day)] ?? []
   const [from, to] = useMemo(() => {
@@ -68,17 +74,26 @@ export default function Agenda() {
   }, [settings, staff, plan, isoDate(day)])
 
   if (!settings || !appts) return <Loading />
-  const shift = (n: number) => { const d = new Date(day); d.setDate(d.getDate() + n); setDay(d) }
-  const visible = appts.filter((a) => a.status !== 'disdetto')
+  const shift = (n: number) => {
+    if (vista === 'mese') { setDay(new Date(day.getFullYear(), day.getMonth() + n, 1, 12)); return }
+    setDay(addDays(day, n * (vista === 'settimana' ? 7 : 1)))
+  }
+  const visible = appts.filter((a) => a.status !== 'disdetto' && (vista === 'giorno' || !opFilter || a.items.some((i) => i.staff_id === opFilter)))
+  const periodo = vista === 'giorno' ? longDay(day)
+    : vista === 'settimana' ? `${monday(day).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })} – ${addDays(monday(day), 6).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}`
+      : day.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })
+  const unit = vista === 'giorno' ? 'Giorno' : vista === 'settimana' ? 'Settimana' : 'Mese'
   const totalDay = visible.reduce((s, a) => s + Number(a.total), 0)
 
   return (
     <>
-      <PageTitle title="Agenda" video="agenda" subtitle={`${longDay(day)} · ${visible.length} appuntamenti · ${fmtEuro(totalDay)}`}
+      <PageTitle title="Agenda" video="agenda" subtitle={`${periodo} · ${visible.length} appuntamenti · ${fmtEuro(totalDay)}`}
         right={<Group>
-          <ActionIcon variant="default" size="lg" onClick={() => shift(-1)} aria-label="Giorno prima"><IconChevronLeft size={18} /></ActionIcon>
+          <SegmentedControl value={vista} onChange={(v) => setDay(day, v)} data-testid="agenda-vista"
+            data={[{ value: 'giorno', label: 'Giorno' }, { value: 'settimana', label: 'Settimana' }, { value: 'mese', label: 'Mese' }]} />
+          <ActionIcon variant="default" size="lg" onClick={() => shift(-1)} aria-label={`${unit} prima`}><IconChevronLeft size={18} /></ActionIcon>
           <Button variant="default" onClick={() => setDay(new Date())}>Oggi</Button>
-          <ActionIcon variant="default" size="lg" onClick={() => shift(1)} aria-label="Giorno dopo"><IconChevronRight size={18} /></ActionIcon>
+          <ActionIcon variant="default" size="lg" onClick={() => shift(1)} aria-label={`${unit} dopo`}><IconChevronRight size={18} /></ActionIcon>
           <DatePickerInput value={day} onChange={(d) => d && setDay(d as Date)} valueFormat="DD/MM/YYYY" w={130} />
           <Button leftSection={<IconCalendarPlus size={16} />} onClick={() => setNewAt({})}>Nuovo appuntamento</Button>
           <Tooltip label="Apri la pagina di prenotazione per i clienti">
@@ -91,6 +106,19 @@ export default function Agenda() {
           <Text mb="md">Per iniziare inserisci operatori e servizi.</Text>
           <Button onClick={() => nav('/agenda/servizi')}>Servizi e operatori</Button>
         </Paper>
+      ) : vista !== 'giorno' ? (
+        <>
+          <Group gap="xs" mb="sm">
+            <Text size="sm" fw={500}>Operatore</Text>
+            <Button size="xs" variant={opFilter === null ? 'filled' : 'default'} onClick={() => setOpFilter(null)}>Tutti</Button>
+            {staff.map((s) => <Button key={s.id} size="xs" variant={opFilter === s.id ? 'filled' : 'default'} onClick={() => setOpFilter(s.id)}
+              leftSection={<Box w={8} h={8} bg={s.color} style={{ borderRadius: '50%' }} />}>{s.first_name}</Button>)}
+          </Group>
+          {vista === 'settimana'
+            ? <WeekView start={monday(day)} appts={visible} staff={staff} settings={settings} onOpen={setOpenId} onDay={(d) => setDay(d, 'giorno')}
+                onNew={(d, time) => setNewAt({ date: d, time, staffId: opFilter ?? undefined })} />
+            : <MonthView month={day} appts={visible} staff={staff} settings={settings} onOpen={setOpenId} onDay={(d) => setDay(d, 'giorno')} />}
+        </>
       ) : (
         <Paper withBorder p={0}>
           <ScrollArea type="auto">
@@ -147,9 +175,10 @@ export default function Agenda() {
           </ScrollArea>
         </Paper>
       )}
-      <Text size="xs" c="dimmed" mt="xs">Fascia a righe = tempo di posa: l'operatore è libero per un altro cliente. Clic su uno spazio vuoto per prenotare lì.</Text>
+      <Text size="xs" c="dimmed" mt="xs">{vista === 'giorno' ? 'Fascia a righe = tempo di posa: l\'operatore è libero per un altro cliente. Clic su uno spazio vuoto per prenotare lì.'
+        : vista === 'settimana' ? 'Colori = operatori. Clic su uno spazio vuoto per prenotare lì, sul nome del giorno per aprirlo.' : 'Clic su un giorno per aprirlo, su un nome per vedere l\'appuntamento.'}</Text>
 
-      {newAt && <NewAppointment day={day} staff={staff} services={services} preset={newAt} onClose={() => setNewAt(null)}
+      {newAt && <NewAppointment day={newAt.date ?? day} staff={staff} services={services} preset={newAt} onClose={() => setNewAt(null)}
         onSaved={(a) => { setNewAt(null); load(); setOpenId(a.id) }} />}
       <Drawer opened={!!openId} onClose={() => { setOpenId(null); load() }} position="right" size="lg" title="Appuntamento">
         {openId && <AppointmentDetail id={openId} staff={staff} canCash={has('pos')} onChange={load} />}

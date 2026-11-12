@@ -46,6 +46,12 @@ WhatsApp Business: `docs/WHATSAPP.md`. Identità visiva: `docs/BRAND.md`.
   indice unico `messages(tenant_id, dedupe_key)`. Campagne e automatici di marketing SOLO a chi ha il consenso marketing.
 - Migrazione `0024_agenda_marketing` (RLS su tutte le tabelle cliente). Test: `tests/test_agenda.py`.
 
+## Viste dell'agenda (2026-11-12, `AgendaViews.tsx`)
+- `/agenda?vista=giorno|settimana|mese&giorno=AAAA-MM-GG`: Giorno = una colonna per operatore (Agenda.tsx); Settimana = 7 colonne
+  lun–dom con le ore, colori degli operatori, clic su spazio vuoto = nuovo appuntamento in quel giorno e ora, clic sul giorno = vista
+  Giorno; Mese = griglia con numero di appuntamenti, incasso previsto e primi 3 nomi. Filtro per operatore nelle viste Settimana e Mese.
+  Dati: `GET /api/agenda/appuntamenti?day=&days=` (fino a 31 giorni). DA FARE: spostare gli appuntamenti trascinandoli.
+
 ## Turni e assenze (`/agenda/turni`, `Shifts.tsx`; migrazione `0026_turni`)
 - Orario effettivo di un operatore in un giorno = `service.day_plan`: chiusura del salone (`agenda_absences` senza
   operatore) > ferie/malattia > «orario diverso» > orario settimanale (personale o del salone, con **settimane alterne**:
