@@ -9,6 +9,7 @@ bcrypt==4.2.*
 pyjwt==2.10.*
 pyotp==2.9.*
 celery[redis]==5.4.*
+kombu>=5.4,<5.7  # kombu 5.7 vuole redis-py >= 6.1, ma celery[redis] 5.4 installa redis 5.x: il worker non parte
 jinja2==3.1.*
 python-dateutil==2.9.*
 pytest==8.3.*
